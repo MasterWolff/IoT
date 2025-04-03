@@ -3,13 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import Link from "next/link";
-import dynamic from 'next/dynamic';
-
-// Dynamic import of the auto-fetch initializer with no SSR to avoid server-side issues
-const AutoFetchInitializer = dynamic(
-  () => import('@/lib/autoFetchInitializer'),
-  { ssr: false }
-);
+import AutoFetchInit from "@/components/AutoFetchInit";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,7 +22,7 @@ export default function RootLayout({
       <body className={`${inter.className} h-full bg-slate-50`}>
         <Providers>
           {/* Initialize auto-fetch service */}
-          <AutoFetchInitializer />
+          <AutoFetchInit />
           <div className="flex min-h-screen flex-col">
             <header className="border-b bg-white sticky top-0 z-10 shadow-sm">
               <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 flex items-center justify-between py-4">
@@ -92,6 +86,12 @@ export default function RootLayout({
                     className="text-sm font-medium hover:text-blue-600 transition-colors"
                   >
                     Auto Fetch
+                  </Link>
+                  <Link 
+                    href="/data-tables" 
+                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                  >
+                    Data Tables
                   </Link>
                 </nav>
               </div>
