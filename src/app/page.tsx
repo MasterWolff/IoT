@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -6,90 +9,418 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MeasurementTabs } from "@/components/measurement-tabs";
+import { 
+  DropletIcon, 
+  ThermometerIcon, 
+  InfoIcon, 
+  BellIcon,
+  FrameIcon,
+  TabletSmartphone as DevicesIcon,
+  DatabaseIcon,
+  AlertCircle,
+  Wind,
+} from "lucide-react";
+import { format } from 'date-fns';
+import Link from 'next/link';
+
+// Type definitions
+type Painting = {
+  id: string;
+  name: string;
+  artist: string;
+};
+
+type Device = {
+  id: string;
+  name: string;
+  status: string;
+  paintings: Painting;
+};
+
+// Types for the environment data
+type EnvironmentalData = {
+  id: string;
+  device_id: string;
+  painting_id: string;
+  timestamp: string;
+  temperature: number | null;
+  humidity: number | null;
+  co2concentration: number | null;
+  airpressure: number | null;
+  moldrisklevel: number | null;
+  created_at: string;
+};
+
+// Types for alerts related to specific environment types
+type AlertType = 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel';
+
+type Alert = {
+  id: string;
+  timestamp: string;
+  temperature?: number | null;
+  humidity?: number | null;
+  co2concentration?: number | null;
+  airpressure?: number | null;
+  moldrisklevel?: number | null;
+  paintings: {
+    id: string;
+    name: string;
+    artist: string;
+    painting_materials: {
+      materials: {
+        threshold_temperature_lower: number | null;
+        threshold_temperature_upper: number | null;
+        threshold_humidity_lower: number | null;
+        threshold_humidity_upper: number | null;
+        threshold_co2concentration_lower: number | null;
+        threshold_co2concentration_upper: number | null;
+        threshold_moldrisklevel_lower: number | null;
+        threshold_moldrisklevel_upper: number | null;
+      }
+    }[];
+  };
+  alert_type?: string;
+  threshold_exceeded?: string;
+  measured_value?: number;
+  threshold_value?: number;
+};
 
 export default function Home() {
+  const [paintings, setPaintings] = useState<Painting[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [dataPoints, setDataPoints] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch paintings
+        const paintingsResponse = await fetch('/api/paintings');
+        const paintingsData = await paintingsResponse.json();
+        if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
+        setPaintings(paintingsData.paintings || []);
+
+        // Fetch devices
+        const devicesResponse = await fetch('/api/devices');
+        const devicesData = await devicesResponse.json();
+        if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
+        setDevices(devicesData.devices || []);
+
+        // Fetch alerts (these are calculated from environmental data, not stored in a table)
+        const alertsResponse = await fetch('/api/alerts');
+        const alertsData = await alertsResponse.json();
+        if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
+        setAlerts(alertsData.alerts || []);
+        
+        // Fetch environmental data for data points count
+        const envDataResponse = await fetch('/api/environmental-data');
+        const envData = await envDataResponse.json();
+        if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
+        setDataPoints(envData.count || 0);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+        setError('Failed to load dashboard data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  // Helper function to determine alert type and icon
+  const getAlertInfo = (alert: Alert) => {
+    // Use alert_type field if present in new alert structure
+    if (alert.alert_type) {
+      switch (alert.alert_type) {
+        case 'temperature':
+          return {
+            type: 'temperature',
+            icon: <ThermometerIcon />,
+            title: `Temperature ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'} (${alert.measured_value}°C)`,
+            problem: `Temperature ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}°C`,
+            action: alert.threshold_exceeded === 'upper' ? 'Lower thermostat setting' : 'Increase heating',
+          };
+        
+        case 'humidity':
+          return {
+            type: 'humidity',
+            icon: <DropletIcon />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Humidity (${alert.measured_value}%)`,
+            problem: `Humidity ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}%`,
+            action: alert.threshold_exceeded === 'upper' ? 'Adjust dehumidifier settings' : 'Increase humidity',
+          };
+          
+        case 'co2':
+          return {
+            type: 'co2',
+            icon: <Wind />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} CO2 Level (${alert.measured_value} ppm)`,
+            problem: `CO2 level ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value} ppm`,
+            action: alert.threshold_exceeded === 'upper' ? 'Improve ventilation' : 'Check CO2 sensor calibration',
+          };
+          
+        case 'mold_risk_level':
+          return {
+            type: 'mold',
+            icon: <AlertCircle />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Mold Risk (Level ${alert.measured_value})`,
+            problem: `Mold risk level ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}`,
+            action: alert.threshold_exceeded === 'upper' ? 'Adjust humidity and temperature' : 'Check sensor calibration',
+          };
+          
+        default:
+          return {
+            type: 'unknown',
+            icon: <AlertCircle />,
+            title: 'Environmental Alert',
+            problem: 'Environmental conditions outside safe thresholds',
+            action: 'Check environmental controls',
+          };
+      }
+    }
+    
+    // Legacy code for the old alert structure
+    if (alert.temperature && (
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_lower !== null && 
+       alert.temperature < alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_lower) ||
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_upper !== null && 
+       alert.temperature > alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_upper)
+    )) {
+      return {
+        type: 'temperature',
+        icon: <ThermometerIcon />,
+        title: `Temperature ${alert.temperature > (alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_upper || 0) ? 'Too High' : 'Too Low'} (${alert.temperature}°C)`,
+        problem: `Temperature ${alert.temperature > (alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_upper || 0) ? 'exceeds' : 'below'} safe threshold`,
+        action: alert.temperature > (alert.paintings?.painting_materials?.[0]?.materials.threshold_temperature_upper || 0) ? 
+          'Lower thermostat setting' : 'Increase heating',
+      };
+    }
+    
+    if (alert.humidity && (
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_lower !== null && 
+       alert.humidity < alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_lower) ||
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_upper !== null && 
+       alert.humidity > alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_upper)
+    )) {
+      return {
+        type: 'humidity',
+        icon: <DropletIcon />,
+        title: `${alert.humidity > (alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_upper || 0) ? 'High' : 'Low'} Humidity (${alert.humidity}%)`,
+        problem: `Humidity ${alert.humidity > (alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_upper || 0) ? 'exceeds' : 'below'} safe threshold`,
+        action: alert.humidity > (alert.paintings?.painting_materials?.[0]?.materials.threshold_humidity_upper || 0) ? 
+          'Adjust dehumidifier settings' : 'Increase humidity',
+      };
+    }
+    
+    // If we're still here, check for co2Concentration issues
+    if (alert.co2concentration && (
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_lower !== null && 
+       alert.co2concentration < alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_lower) ||
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_upper !== null && 
+       alert.co2concentration > alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_upper)
+    )) {
+      return {
+        type: 'co2',
+        icon: <Wind />,
+        title: `${alert.co2concentration > (alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_upper || 0) ? 'High' : 'Low'} CO2 Level (${alert.co2concentration} ppm)`,
+        problem: `CO2 level ${alert.co2concentration > (alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_upper || 0) ? 'exceeds' : 'below'} safe threshold`,
+        action: alert.co2concentration > (alert.paintings?.painting_materials?.[0]?.materials.threshold_co2concentration_upper || 0) ? 
+          'Improve ventilation' : 'Check CO2 sensor calibration',
+      };
+    }
+    
+    // Check for mold risk issues
+    if (alert.moldrisklevel && (
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_lower !== null && 
+       alert.moldrisklevel < alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_lower) ||
+      (alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_upper !== null && 
+       alert.moldrisklevel > alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_upper)
+    )) {
+      return {
+        type: 'mold',
+        icon: <AlertCircle />,
+        title: `${alert.moldrisklevel > (alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_upper || 0) ? 'High' : 'Low'} Mold Risk (Level ${alert.moldrisklevel})`,
+        problem: `Mold risk level ${alert.moldrisklevel > (alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_upper || 0) ? 'exceeds' : 'below'} safe threshold`,
+        action: alert.moldrisklevel > (alert.paintings?.painting_materials?.[0]?.materials.threshold_moldrisklevel_upper || 0) ? 
+          'Adjust humidity and temperature' : 'Monitor conditions',
+      };
+    }
+    
+    // Default if we can't determine the exact alert type
+    return {
+      type: 'unknown',
+      icon: <AlertCircle />,
+      title: 'Environmental Alert',
+      problem: 'Environmental conditions outside safe thresholds',
+      action: 'Check environmental controls',
+    };
+  };
+
+  // Helper function to format relative time
+  const getRelativeTime = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      return `${format(date, 'MMM d, yyyy')} at ${format(date, 'h:mm a')}`;
+    } catch (err) {
+      return 'recently';
+    }
+  };
+
+  // Calculate active devices - those with recent measurements
+  const activeDevices = devices.filter(device => 
+    device.status === 'active' || device.status === 'connected'
+  ).length;
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div className="space-x-2">
+          <Link 
+            href="/data-tables" 
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            View Raw Data Tables
+          </Link>
+          <Link 
+            href="/test-arduino" 
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            Test Arduino Integration
+          </Link>
+        </div>
       </div>
       
+      {error && (
+        <Alert variant="destructive" className="shadow-sm">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-l-2 border-l-blue-400">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-medium">Total Paintings</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Total Paintings</CardTitle>
+              <FrameIcon className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground mt-1">+2 from last month</p>
+            <div className="text-3xl font-bold">
+              {loading ? '...' : paintings.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Monitored artworks</p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-l-2 border-l-green-400">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
+              <DevicesIcon className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">8</div>
-            <p className="text-xs text-muted-foreground mt-1">5 connected today</p>
+            <div className="text-3xl font-bold">
+              {loading ? '...' : (
+                // Try to calculate active devices safely
+                devices.filter(d => d.status === 'active' || d.status === 'connected').length
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {loading ? '...' : `${devices.length} total devices`}
+            </p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-l-2 border-l-amber-400">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-medium">Alerts</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Alerts</CardTitle>
+              <BellIcon className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-500">3</div>
-            <p className="text-xs text-muted-foreground mt-1">Requires attention</p>
+            <div className="text-3xl font-bold text-amber-600">
+              {loading ? '...' : alerts.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {alerts.length > 0 ? 'Require attention' : 'No active alerts'}
+            </p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-l-2 border-l-purple-400">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-medium">Data Points</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Data Points</CardTitle>
+              <DatabaseIcon className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">10.4k</div>
-            <p className="text-xs text-muted-foreground mt-1">Last 24 hours</p>
+            <div className="text-3xl font-bold">
+              {loading ? '...' : dataPoints.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total measurements</p>
           </CardContent>
         </Card>
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight mb-2">Active Alerts</h2>
-        <div className="grid gap-4">
-          <Alert variant="destructive" className="shadow-sm">
-            <AlertTitle className="font-semibold">High Humidity Alert</AlertTitle>
-            <AlertDescription>
-              <div className="mt-2 space-y-1">
-                <p><strong>Painting:</strong> Sunflowers by Vincent van Gogh</p>
-                <p><strong>Current Level:</strong> 70% (Above threshold of 65%)</p>
-                <p><strong>Time:</strong> Last updated 12 minutes ago</p>
-              </div>
-            </AlertDescription>
-          </Alert>
-          <Alert variant="destructive" className="shadow-sm">
-            <AlertTitle className="font-semibold">Temperature Fluctuation</AlertTitle>
-            <AlertDescription>
-              <div className="mt-2 space-y-1">
-                <p><strong>Painting:</strong> The Night Watch by Rembrandt</p>
-                <p><strong>Current Level:</strong> 26°C (Above threshold of 23°C)</p>
-                <p><strong>Time:</strong> Last updated 5 minutes ago</p>
-              </div>
-            </AlertDescription>
-          </Alert>
-          <Alert variant="destructive" className="shadow-sm">
-            <AlertTitle className="font-semibold">High Light Exposure</AlertTitle>
-            <AlertDescription>
-              <div className="mt-2 space-y-1">
-                <p><strong>Painting:</strong> Water Lilies by Claude Monet</p>
-                <p><strong>Current Level:</strong> 250 lux (Above threshold of 200 lux)</p>
-                <p><strong>Time:</strong> Last updated 30 minutes ago</p>
-              </div>
-            </AlertDescription>
-          </Alert>
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
+          {alerts.length > 0 && (
+            <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
+              {alerts.length}
+            </span>
+          )}
         </div>
+        
+        {loading ? (
+          <Card className="p-6 text-center text-muted-foreground">
+            Loading alerts...
+          </Card>
+        ) : alerts.length > 0 ? (
+          <div className="grid gap-4">
+            {alerts.map((alert, index) => {
+              const alertInfo = getAlertInfo(alert);
+              return (
+                <Alert key={alert.id || index} variant="warning" className="shadow-sm border-l-2 border-l-amber-400">
+                  {alertInfo.icon}
+                  <AlertTitle className="font-semibold">{alertInfo.title}</AlertTitle>
+                  <AlertDescription>
+                    <div className="mt-2 space-y-1">
+                      <p><strong>Painting:</strong> {alert.paintings?.name || 'Unknown'} by {alert.paintings?.artist || 'Unknown Artist'}</p>
+                      <p><strong>Problem:</strong> {alertInfo.problem}</p>
+                      <p><strong>Action:</strong> {alertInfo.action}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Last updated {alert.timestamp ? getRelativeTime(alert.timestamp) : 'recently'}
+                      </p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              );
+            })}
+          </div>
+        ) : (
+          <Card className="p-6 text-center">
+            <p className="text-muted-foreground">No active alerts at this time</p>
+          </Card>
+        )}
       </section>
       
-      <MeasurementTabs />
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-xl font-bold tracking-tight">Recent Measurements</h2>
+          <InfoIcon className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <MeasurementTabs />
+      </section>
     </div>
   );
 }
