@@ -132,37 +132,44 @@ export default function AutoFetchPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      setStatusMessage('Fetching data from Arduino Cloud...');
+      setStatusMessage('Generating test sensor data...');
       
       // Record fetch time
       const fetchTime = new Date();
       setLastFetchTime(fetchTime);
       setFetchCount(prev => prev + 1);
       
-      // Fetch data from Arduino Cloud API
-      const response = await fetch('/api/arduino-cloud');
+      // Fetch data directly from the test endpoint
+      const response = await fetch('/api/test-arduino-data');
       const data = await response.json();
+      
+      // Debug - log the entire response
+      console.log('API Response:', data);
       
       if (data.success) {
         setSuccessCount(prev => prev + 1);
-        setStatusMessage(`Successfully fetched data from ${data.count} device(s)`);
+        setStatusMessage(`Successfully saved test sensor data`);
         
-        // Update recent data
-        if (data.data && data.data.length > 0) {
-          setRecentData(prev => {
-            // Add new data to the beginning of the array
-            const newData = [...data.data, ...prev].slice(0, 10);
-            return newData;
-          });
-        }
+        // The data is already in the right format, just use it directly
+        setRecentData(prev => {
+          // Create a simple wrapper around the saved data that matches our display format
+          const newItem = {
+            id: new Date().getTime(), // Just for a key
+            timestamp: new Date().toISOString(),
+            data: data.saved_data
+          };
+          
+          // Add new data to the beginning of the array
+          return [newItem, ...prev].slice(0, 10);
+        });
       } else {
         setErrorCount(prev => prev + 1);
-        setStatusMessage(`Error: ${data.error || 'Failed to fetch data'}`);
+        setStatusMessage(`Error: ${data.error || 'Failed to generate test data'}`);
       }
     } catch (error) {
       setErrorCount(prev => prev + 1);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to fetch data'}`);
-      console.error('Error fetching data:', error);
+      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to generate test data'}`);
+      console.error('Error generating test data:', error);
     } finally {
       setLoading(false);
     }
@@ -358,8 +365,8 @@ export default function AutoFetchPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Painting</TableHead>
+                  <TableHead>Painting ID</TableHead>
+                  <TableHead>Device ID</TableHead>
                   <TableHead>Temperature</TableHead>
                   <TableHead>Humidity</TableHead>
                   <TableHead>CO₂</TableHead>
@@ -374,13 +381,13 @@ export default function AutoFetchPage() {
                   if (!data) return null;
                   
                   return (
-                    <TableRow key={`${data.id}-${index}`}>
-                      <TableCell>{data.device_id ? data.device_id.substring(0, 8) : 'N/A'}</TableCell>
+                    <TableRow key={`${index}-${item.id}`}>
                       <TableCell>{data.painting_id ? data.painting_id.substring(0, 8) : 'N/A'}</TableCell>
-                      <TableCell>{data.temperature !== null ? `${data.temperature.toFixed(1)}°C` : 'N/A'}</TableCell>
-                      <TableCell>{data.humidity !== null ? `${data.humidity.toFixed(1)}%` : 'N/A'}</TableCell>
+                      <TableCell>{data.device_id ? data.device_id.substring(0, 8) : 'N/A'}</TableCell>
+                      <TableCell>{data.temperature !== null ? `${Number(data.temperature).toFixed(1)}°C` : 'N/A'}</TableCell>
+                      <TableCell>{data.humidity !== null ? `${Number(data.humidity).toFixed(1)}%` : 'N/A'}</TableCell>
                       <TableCell>{data.co2concentration !== null ? `${data.co2concentration} ppm` : 'N/A'}</TableCell>
-                      <TableCell>{data.airpressure !== null ? `${data.airpressure.toFixed(1)} hPa` : 'N/A'}</TableCell>
+                      <TableCell>{data.airpressure !== null ? `${Number(data.airpressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
                       <TableCell>{data.moldrisklevel !== null ? data.moldrisklevel : 'N/A'}</TableCell>
                       <TableCell>{format(new Date(data.timestamp), 'HH:mm:ss')}</TableCell>
                     </TableRow>

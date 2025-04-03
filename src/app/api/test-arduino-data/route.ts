@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 // Simple test endpoint to save Arduino data exactly as it comes from Arduino Cloud
 export async function GET() {
   try {
-    // Get a device to test with
+    // Get a device to test with - we don't need arduino_device_id since it doesn't exist
     const { data: devices } = await supabase
       .from('devices')
       .select('id, painting_id')
@@ -113,6 +113,15 @@ export async function GET() {
         attempted_data: environmentalData
       }, { status: 500 });
     }
+    
+    // Also update the device's last_measurement timestamp
+    await supabase
+      .from('devices')
+      .update({ 
+        last_measurement: environmentalData.timestamp,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', devices[0].id);
     
     return NextResponse.json({
       success: true,
