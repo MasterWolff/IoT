@@ -1,49 +1,67 @@
-# IoT Museum Environmental Monitoring Dashboard
+# IoT Painting Monitoring System
 
-A Next.js application for monitoring environmental conditions of artwork in museums using IoT devices. The dashboard provides real-time data visualization for temperature, humidity, light, and CO2 levels to ensure proper conservation of valuable paintings.
+This project is an IoT system for monitoring environmental conditions around valuable paintings. It uses Arduino sensors to collect temperature, humidity, air pressure, CO2 levels, and mold risk data, and provides a dashboard for visualization and alerts.
 
 ## Features
 
-- Dashboard with key statistics and active alerts
-- Paintings management for tracking artwork
-- Devices management for IoT sensors
-- Materials tracking with environmental thresholds
-- Environmental data visualization with interactive tabs
+- **Dashboard**: Overview of all paintings, active devices, alerts, and data points
+- **Paintings Management**: Add, edit, and delete paintings with their details
+- **Device Management**: Connect Arduino devices to specific paintings
+- **Environmental Monitoring**: Real-time data visualization of environmental conditions
+- **Alerts System**: Automatic alerts when environmental conditions exceed thresholds
+- **Arduino Cloud Integration**: Fetch data from Arduino Cloud API to monitor paintings
 
-## Tech Stack
+## Arduino Monitoring
 
-- [Next.js](https://nextjs.org) - React framework
-- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS framework
-- [Shadcn UI](https://ui.shadcn.com) - Component library
-- [Supabase](https://supabase.com) - Backend and database
+The system includes a dedicated Arduino Monitoring page that allows you to:
+
+1. Select a device connected to a painting
+2. Set a monitoring duration (1-120 minutes)
+3. Fetch environmental data from Arduino Cloud every 5 seconds
+4. View real-time readings and monitoring logs
+
+### Setting up Arduino Cloud Integration
+
+1. Create an account on [Arduino Cloud](https://cloud.arduino.cc/)
+2. Set up your Arduino device with the required sensors
+3. Create a "Thing" in Arduino Cloud with the following variables:
+   - temperature
+   - humidity
+   - airPressure (or airpressure)
+   - co2Concentration (or co2concentration)
+   - moldRiskLevel (or moldrisklevel)
+4. Create API credentials in Arduino Cloud (Client ID and Client Secret)
+5. Add these credentials to your .env file:
+   ```
+   ARDUINO_CLIENT_ID=your-arduino-client-id
+   ARDUINO_CLIENT_SECRET=your-arduino-client-secret
+   ```
 
 ## Getting Started
 
-First, run the development server:
+1. Clone the repository
+2. Copy `.env.example` to `.env` and fill in the required environment variables
+3. Install dependencies: `npm install`
+4. Start the development server: `npm run dev`
+5. Visit `http://localhost:3000`
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Database Setup
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The system uses Supabase as the database. You'll need to set up the following tables:
 
-## Database Schema
+- paintings
+- devices
+- environmental_data
+- materials
+- alerts
 
-The application uses the following database tables:
-- `paintings` - Stores information about artworks
-- `materials` - Contains data about painting materials and their environmental thresholds
-- `painting_materials` - Junction table for the many-to-many relationship
-- `devices` - Information about IoT sensors
-- `environmental_data` - Sensor readings with timestamps
+See the database schema in `schema.sql` for details.
 
-## Deployment
+## Technologies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new) from the creators of Next.js.
-
-Check out [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js
+- React
+- TypeScript
+- Supabase
+- shadcn/ui Components
+- Arduino Cloud API

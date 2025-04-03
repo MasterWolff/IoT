@@ -18,17 +18,15 @@ export type Painting = {
 export type Material = {
   id: string;
   name: string;
-  max_allowable_airPressure_change: number | null;
-  threshold_co2Concentration_lower: number | null;
-  threshold_co2Concentration_upper: number | null;
+  max_allowable_airpressure_change: number | null;
+  threshold_co2concentration_lower: number | null;
+  threshold_co2concentration_upper: number | null;
   threshold_humidity_lower: number | null;
   threshold_humidity_upper: number | null;
-  threshold_illuminance_lower: number | null;
-  threshold_illuminance_upper: number | null;
   threshold_temperature_lower: number | null;
   threshold_temperature_upper: number | null;
-  threshold_moldRiskLevel_lower: number | null;
-  threshold_moldRiskLevel_upper: number | null;
+  threshold_moldrisklevel_lower: number | null;
+  threshold_moldrisklevel_upper: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -42,6 +40,7 @@ export type PaintingMaterial = {
 export type Device = {
   id: string;
   painting_id: string | null;
+  arduino_device_id: string | null; // Arduino Cloud Device ID
   last_calibration_date: string | null;
   last_measurement: string | null;
   created_at: string;
@@ -53,11 +52,12 @@ export type EnvironmentalData = {
   painting_id: string;
   device_id: string;
   timestamp: string;
-  airPressure: number | null;
-  co2Concentration: number | null;
+  air_pressure: number | null;
+  co2: number | null;
   humidity: number | null;
   illuminance: number | null;
   temperature: number | null;
-  moldRiskLevel: number | null;
+  mold_risk_level: number | null;
   created_at: string;
+  updated_at: string;
 }; 

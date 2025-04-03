@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Painting, Material, Device, EnvironmentalData } from './supabase';
+import type { AlertInfo } from './emailService';
 
 // Paintings API
 export async function getPaintings() {
@@ -137,6 +138,38 @@ export async function getLatestEnvironmentalData(paintingId?: string, limit = 10
   return data as EnvironmentalData[];
 }
 
+// Store new sensor data
+export async function storeSensorData(sensorData: Partial<EnvironmentalData>) {
+  // Ensure the timestamp is set if not provided
+  if (!sensorData.timestamp) {
+    sensorData.timestamp = new Date().toISOString();
+  }
+
+  // Insert the data into the database
+  const { data, error } = await supabase
+    .from('environmental_data')
+    .insert(sensorData)
+    .select();
+  
+  if (error) {
+    console.error('Error storing sensor data:', error);
+    throw new Error(`Failed to store sensor data: ${error.message}`);
+  }
+
+  // Update the device's last_measurement timestamp
+  if (sensorData.device_id) {
+    await supabase
+      .from('devices')
+      .update({ 
+        last_measurement: sensorData.timestamp,
+        updated_at: sensorData.timestamp
+      })
+      .eq('id', sensorData.device_id);
+  }
+  
+  return data;
+}
+
 // Check for alerts based on environmental data and material thresholds
 export async function getAlerts() {
   const { data: envData, error: envError } = await supabase
@@ -194,16 +227,16 @@ export async function getAlerts() {
       }
       
       // Check CO2
-      if (data.co2Concentration !== null && 
-          ((material.threshold_co2Concentration_lower !== null && data.co2Concentration < material.threshold_co2Concentration_lower) ||
-           (material.threshold_co2Concentration_upper !== null && data.co2Concentration > material.threshold_co2Concentration_upper))) {
+      if (data.co2 !== null && 
+          ((material.threshold_co2_lower !== null && data.co2 < material.threshold_co2_lower) ||
+           (material.threshold_co2_upper !== null && data.co2 > material.threshold_co2_upper))) {
         return true;
       }
       
       // Check mold risk
-      if (data.moldRiskLevel !== null && 
-          ((material.threshold_moldRiskLevel_lower !== null && data.moldRiskLevel < material.threshold_moldRiskLevel_lower) ||
-           (material.threshold_moldRiskLevel_upper !== null && data.moldRiskLevel > material.threshold_moldRiskLevel_upper))) {
+      if (data.mold_risk_level !== null && 
+          ((material.threshold_mold_risk_level_lower !== null && data.mold_risk_level < material.threshold_mold_risk_level_lower) ||
+           (material.threshold_mold_risk_level_upper !== null && data.mold_risk_level > material.threshold_mold_risk_level_upper))) {
         return true;
       }
     }
@@ -212,4 +245,208 @@ export async function getAlerts() {
   });
   
   return alerts;
+}
+
+// Check for alerts and send email notifications if thresholds are exceeded
+export async function checkAlertsAndNotify() {
+  try {
+    const alerts = await getAlerts();
+    if (!alerts || alerts.length === 0) {
+      console.log('No alerts detected at this time.');
+      return { success: true, alertsCount: 0 };
+    }
+    
+    console.log(`Found ${alerts.length} alerts that may require notification.`);
+    
+    // Lazy import to avoid circular dependencies
+    const { sendAlertEmail } = await import('./emailService');
+    
+    let emailsSent = 0;
+    
+    // Process each alert
+    for (const alertData of alerts) {
+      const painting = alertData.paintings;
+      if (!painting) continue;
+      
+      // For each affected material, prepare and send an alert
+      for (const pm of painting.painting_materials || []) {
+        const material = pm.materials;
+        if (!material) continue;
+        
+        // Check which threshold was exceeded and prepare alert information
+        if (alertData.temperature !== null) {
+          if ((material.threshold_temperature_lower !== null && alertData.temperature < material.threshold_temperature_lower) ||
+              (material.threshold_temperature_upper !== null && alertData.temperature > material.threshold_temperature_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'temperature',
+                value: alertData.temperature,
+                unit: '°C'
+              },
+              threshold: {
+                lower: material.threshold_temperature_lower,
+                upper: material.threshold_temperature_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+        
+        // Check humidity threshold
+        if (alertData.humidity !== null) {
+          if ((material.threshold_humidity_lower !== null && alertData.humidity < material.threshold_humidity_lower) ||
+              (material.threshold_humidity_upper !== null && alertData.humidity > material.threshold_humidity_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'humidity',
+                value: alertData.humidity,
+                unit: '%'
+              },
+              threshold: {
+                lower: material.threshold_humidity_lower,
+                upper: material.threshold_humidity_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+        
+        // Check illuminance threshold
+        if (alertData.illuminance !== null) {
+          if ((material.threshold_illuminance_lower !== null && alertData.illuminance < material.threshold_illuminance_lower) ||
+              (material.threshold_illuminance_upper !== null && alertData.illuminance > material.threshold_illuminance_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'illuminance',
+                value: alertData.illuminance,
+                unit: 'lux'
+              },
+              threshold: {
+                lower: material.threshold_illuminance_lower,
+                upper: material.threshold_illuminance_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+        
+        // Check CO2 threshold
+        if (alertData.co2 !== null) {
+          if ((material.threshold_co2_lower !== null && alertData.co2 < material.threshold_co2_lower) ||
+              (material.threshold_co2_upper !== null && alertData.co2 > material.threshold_co2_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'co2',
+                value: alertData.co2,
+                unit: 'ppm'
+              },
+              threshold: {
+                lower: material.threshold_co2_lower,
+                upper: material.threshold_co2_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+        
+        // Check air pressure threshold
+        if (alertData.air_pressure !== null) {
+          if ((material.threshold_air_pressure_lower !== null && alertData.air_pressure < material.threshold_air_pressure_lower) ||
+              (material.threshold_air_pressure_upper !== null && alertData.air_pressure > material.threshold_air_pressure_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'air_pressure',
+                value: alertData.air_pressure,
+                unit: 'hPa'
+              },
+              threshold: {
+                lower: material.threshold_air_pressure_lower,
+                upper: material.threshold_air_pressure_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+        
+        // Check mold risk threshold
+        if (alertData.mold_risk_level !== null) {
+          if ((material.threshold_mold_risk_level_lower !== null && alertData.mold_risk_level < material.threshold_mold_risk_level_lower) ||
+              (material.threshold_mold_risk_level_upper !== null && alertData.mold_risk_level > material.threshold_mold_risk_level_upper)) {
+            
+            const alertInfo: AlertInfo = {
+              id: alertData.id,
+              paintingId: painting.id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: 'mold_risk_level',
+                value: alertData.mold_risk_level,
+                unit: ''
+              },
+              threshold: {
+                lower: material.threshold_mold_risk_level_lower,
+                upper: material.threshold_mold_risk_level_upper
+              },
+              timestamp: alertData.timestamp
+            };
+            
+            const sent = await sendAlertEmail(alertInfo);
+            if (sent) emailsSent++;
+          }
+        }
+      }
+    }
+    
+    return { 
+      success: true, 
+      alertsCount: alerts.length,
+      emailsSent
+    };
+  } catch (error) {
+    console.error('Error checking alerts and sending notifications:', error);
+    return { 
+      success: false, 
+      error: `Failed to process alerts: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
 } 
