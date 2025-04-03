@@ -41,6 +41,12 @@ export function MainNav({
       >
         Arduino Monitor
       </Link>
+      <Link
+        href="/auto-fetch"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+      >
+        Auto Fetch
+      </Link>
     </nav>
   );
 } 

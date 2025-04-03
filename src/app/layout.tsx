@@ -78,6 +78,12 @@ export default function RootLayout({
                   >
                     Test Arduino
                   </Link>
+                  <Link 
+                    href="/auto-fetch" 
+                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                  >
+                    Auto Fetch
+                  </Link>
                 </nav>
               </div>
             </header>
