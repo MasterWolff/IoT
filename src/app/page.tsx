@@ -142,6 +142,33 @@ export default function Home() {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Function to dismiss an alert
+  const handleDismissAlert = useCallback(async (alertId: string) => {
+    try {
+      // Update the alert status in the database
+      const response = await fetch('/api/alerts-table', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: alertId,
+          status: 'dismissed'
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to dismiss alert:', await response.text());
+        return;
+      }
+
+      // Remove the alert from the UI
+      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId));
+    } catch (err) {
+      console.error('Error dismissing alert:', err);
+    }
+  }, []);
+
   // Helper function to determine alert type and icon
   const getAlertInfo = (alert: Alert) => {
     // Use alert_type field if present in new alert structure
@@ -406,13 +433,28 @@ export default function Home() {
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
-          {alerts.length > 0 && (
-            <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
-              {alerts.length}
-            </span>
-          )}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
+            {alerts.length > 0 && (
+              <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
+                {alerts.length}
+              </span>
+            )}
+          </div>
+          
+          <Link 
+            href="/alert-history" 
+            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
+              <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+              <line x1="16" x2="16" y1="2" y2="6"></line>
+              <line x1="8" x2="8" y1="2" y2="6"></line>
+              <line x1="3" x2="21" y1="10" y2="10"></line>
+            </svg>
+            View Alert History
+          </Link>
         </div>
         
         {loading ? (
@@ -424,7 +466,21 @@ export default function Home() {
             {alerts.map((alert, index) => {
               const alertInfo = getAlertInfo(alert);
               return (
-                <Alert key={alert.id || index} variant="warning" className="shadow-sm border-l-2 border-l-amber-400">
+                <Alert key={alert.id || index} variant="warning" className="shadow-sm border-l-2 border-l-amber-400 relative">
+                  {/* Add dismiss button */}
+                  <button 
+                    onClick={() => handleDismissAlert(alert.id)}
+                    className="absolute top-3 right-3 text-amber-500 hover:text-amber-700 transition-colors"
+                    aria-label="Dismiss alert"
+                    title="Dismiss alert"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="m15 9-6 6" />
+                      <path d="m9 9 6 6" />
+                    </svg>
+                  </button>
+                  
                   {alertInfo.icon}
                   <AlertTitle className="font-semibold">{alertInfo.title}</AlertTitle>
                   <AlertDescription>

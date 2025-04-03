@@ -20,6 +20,58 @@ interface Alert {
   materials: any;
 }
 
+// Helper function to store alert in the alerts table
+async function storeAlertRecord(alert: Alert) {
+  try {
+    // Check if the alert already exists in our table to avoid duplicates
+    const { data: existingAlert, error: checkError } = await supabase
+      .from('alerts')
+      .select('id')
+      .eq('environmental_data_id', alert.environmental_data_id)
+      .eq('alert_type', alert.alert_type)
+      .single();
+    
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected
+      console.error('Error checking for existing alert:', checkError);
+      return;
+    }
+    
+    // If alert already exists, don't create a duplicate
+    if (existingAlert) {
+      console.log(`Alert already exists in database: ${existingAlert.id}`);
+      return;
+    }
+    
+    // Store the alert in the alerts table
+    const { error: insertError } = await supabase
+      .from('alerts')
+      .insert([{
+        id: alert.id,
+        painting_id: alert.painting_id,
+        device_id: alert.device_id,
+        environmental_data_id: alert.environmental_data_id,
+        alert_type: alert.alert_type,
+        threshold_exceeded: alert.threshold_exceeded,
+        measured_value: alert.measured_value,
+        threshold_value: alert.threshold_value,
+        status: 'active',
+        timestamp: alert.timestamp,
+        created_at: new Date().toISOString()
+      }]);
+    
+    if (insertError) {
+      // If we get a table doesn't exist error, that's okay - the user probably 
+      // hasn't set up the alerts table yet. The alerts functionality will still work.
+      if (insertError.code !== '42P01') {
+        console.error('Error storing alert in database:', insertError);
+      }
+    }
+  } catch (error) {
+    console.error('Error in storeAlertRecord:', error);
+    // Don't throw error, just log it - we want the original alerts functionality to continue
+  }
+}
+
 // GET alerts by checking environmental data against material thresholds
 export async function GET(request: Request) {
   try {
@@ -191,9 +243,42 @@ export async function GET(request: Request) {
         // Check thresholds for all supported properties
         Object.values(PROPERTY_MAPPINGS).forEach(propConfig => {
           const alert = checkThreshold(data, material, propConfig);
-          if (alert) alerts.push(alert);
+          if (alert) {
+            alerts.push(alert);
+            
+            // Store the alert in the alerts table (don't await to avoid slowing down response)
+            storeAlertRecord(alert).catch(err => {
+              console.error('Failed to store alert in database:', err);
+            });
+          }
         });
       }
+    }
+    
+    // Now, try to fetch dismissed alerts from the alerts table to filter them out
+    try {
+      // Check if alerts table exists by trying to select from it
+      const { data: dismissedAlerts, error: alertsError } = await supabase
+        .from('alerts')
+        .select('id')
+        .eq('status', 'dismissed');
+        
+      if (!alertsError) {
+        // If alerts table exists, filter out dismissed alerts
+        const dismissedIds = new Set(dismissedAlerts.map(a => a.id));
+        const filteredAlerts = alerts.filter(alert => !dismissedIds.has(alert.id));
+        
+        console.log(`Found ${alerts.length} alerts, ${dismissedIds.size} dismissed, returning ${filteredAlerts.length}`);
+        
+        return NextResponse.json({
+          success: true,
+          count: filteredAlerts.length,
+          alerts: filteredAlerts
+        });
+      }
+    } catch (error) {
+      // Ignore errors here - if the alerts table doesn't exist, we'll just return all alerts
+      console.log('Could not check for dismissed alerts:', error);
     }
     
     console.log(`Found ${alerts.length} alerts`);

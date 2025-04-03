@@ -60,4 +60,21 @@ export type EnvironmentalData = {
   mold_risk_level: number | null;
   created_at: string;
   updated_at: string;
+};
+
+// New type for storing alert records
+export type AlertRecord = {
+  id: string;
+  painting_id: string;
+  device_id: string | null;
+  environmental_data_id: string | null;
+  alert_type: string; // temperature, humidity, co2, mold_risk_level, airpressure
+  threshold_exceeded: 'upper' | 'lower';
+  measured_value: number;
+  threshold_value: number;
+  status: 'active' | 'dismissed';
+  timestamp: string;
+  created_at: string;
+  updated_at: string | null;
+  dismissed_at: string | null;
 }; 
