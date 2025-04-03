@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     // Start building the query
     let query = supabase
       .from('paintings')
-      .select('*, painting_materials(materials(*)), devices(*)')
+      .select('*, painting_materials(materials(*))')
       .order('name');
     
     // Apply filters if provided

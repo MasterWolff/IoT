@@ -52,7 +52,7 @@ export type EnvironmentalData = {
   painting_id: string;
   device_id: string;
   timestamp: string;
-  air_pressure: number | null;
+  airpressure: number | null;
   co2: number | null;
   humidity: number | null;
   illuminance: number | null;

@@ -1,11 +1,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// Data update event system
+type DataUpdateListener = () => void;
+const dataUpdateListeners: DataUpdateListener[] = [];
+
+export const subscribeToDataUpdates = (listener: DataUpdateListener) => {
+  dataUpdateListeners.push(listener);
+  return () => {
+    const index = dataUpdateListeners.indexOf(listener);
+    if (index !== -1) {
+      dataUpdateListeners.splice(index, 1);
+    }
+  };
+};
+
+const notifyDataUpdate = () => {
+  dataUpdateListeners.forEach(listener => listener());
+};
+
 // Type definition for our data item
 export type DataItem = {
   id: string | number;
   timestamp: string;
   data: any;
+  paintingName: string;
 };
 
 // Type definition for auto-fetch state
@@ -115,51 +134,65 @@ export const useAutoFetchStore = create<AutoFetchState>()(
         
         try {
           set({ 
-            statusMessage: 'Generating test sensor data...',
+            statusMessage: 'Fetching data from Arduino Cloud...',
             lastFetchTime: new Date().toISOString(),
             fetchCount: get().fetchCount + 1
           });
           
-          // Fetch data directly from the test endpoint
-          const response = await fetch('/api/test-arduino-data');
+          // Use our proxy endpoint instead of direct API calls
+          const response = await fetch('/api/arduino-proxy');
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API error: ${response.status} ${errorText}`);
+          }
+          
           const data = await response.json();
           
           if (data.success) {
             set({ 
               successCount: get().successCount + 1,
-              statusMessage: 'Successfully saved test sensor data',
+              statusMessage: `Successfully fetched ${data.properties.length} properties`
             });
             
-            // Create a new data item
-            const newItem: DataItem = {
-              id: new Date().getTime(),
+            // Create a data item to display
+            const dataItem: DataItem = {
+              id: crypto.randomUUID(),
               timestamp: new Date().toISOString(),
-              data: data.saved_data
+              data: data.data || {
+                properties: data.properties,
+                thingId: data.thingId,
+                saved: data.saved
+              },
+              paintingName: data.paintingName
             };
             
             // Update recent data
             const currentData = get().recentData;
             set({
-              recentData: [newItem, ...currentData].slice(0, 10)
+              recentData: [dataItem, ...currentData].slice(0, 10)
             });
+            
+            // Notify data subscribers that new data is available
+            notifyDataUpdate();
             
             // Schedule next fetch
             if (isRunning && !isPaused) {
               const nextTime = new Date(Date.now() + interval * 1000);
               set({ nextFetchTime: nextTime.toISOString() });
             }
+            
+            return data;
           } else {
-            set({ 
-              errorCount: get().errorCount + 1,
-              statusMessage: `Error: ${data.error || 'Failed to generate test data'}`
-            });
+            throw new Error(data.error || 'Unknown API error');
           }
         } catch (error) {
           set({ 
             errorCount: get().errorCount + 1,
-            statusMessage: `Error: ${error instanceof Error ? error.message : 'Failed to generate test data'}`
+            statusMessage: `Error: ${error instanceof Error ? error.message : 'Failed to fetch data from Arduino Cloud'}`
           });
-          console.error('Error generating test data:', error);
+          console.error('Error fetching Arduino Cloud data:', error);
+          throw error;
         }
       },
       
@@ -284,4 +317,4 @@ export function stopTimers() {
 export function restartTimers() {
   stopTimers();
   startTimers();
-} 
+}

@@ -1,6 +1,7 @@
 import { storeSensorData } from './api';
 import { supabase } from './supabase';
 import type { EnvironmentalData } from './supabase';
+import { mapArduinoToDatabaseProperties } from './propertyMapper';
 
 interface ArduinoCloudCredentials {
   clientId: string | undefined;
@@ -318,40 +319,30 @@ export class ArduinoCloudClient {
       const sensorValues = await this.getSensorValues(thingId);
       console.log('Retrieved sensor values:', sensorValues);
       
-      // Map the sensor values to our data model
-      if (sensorValues['temperature'] !== undefined) {
-        data.temperature = sensorValues['temperature'];
-      }
+      // Use the property mapper to standardize field names
+      const mappedValues = mapArduinoToDatabaseProperties(sensorValues);
+      console.log('Mapped values:', mappedValues);
       
-      if (sensorValues['humidity'] !== undefined) {
-        data.humidity = sensorValues['humidity'];
-      }
+      // Filter out properties that don't exist in our database
+      // This is important to prevent errors when trying to insert data
+      const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel'];
+      const filteredValues: Record<string, any> = {};
       
-      if (sensorValues['illuminance'] !== undefined || sensorValues['light'] !== undefined) {
-        data.illuminance = sensorValues['illuminance'] || sensorValues['light'];
-      }
+      Object.entries(mappedValues).forEach(([key, value]) => {
+        if (validColumns.includes(key)) {
+          filteredValues[key] = value;
+        } else {
+          console.log(`Skipping property ${key} as it doesn't exist in the database`);
+        }
+      });
       
-      if (sensorValues['co2concentration'] !== undefined || sensorValues['co2'] !== undefined) {
-        data.co2 = sensorValues['co2concentration'] || sensorValues['co2'];
-      }
-      
-      if (sensorValues['airpressure'] !== undefined || sensorValues['pressure'] !== undefined) {
-        data.air_pressure = sensorValues['airpressure'] || sensorValues['pressure'];
-      }
-      
-      if (sensorValues['moldrisk'] !== undefined || 
-          sensorValues['moldriskindex'] !== undefined || 
-          sensorValues['moldrisklevel'] !== undefined) {
-        data.mold_risk_level = sensorValues['moldrisk'] || 
-                            sensorValues['moldriskindex'] || 
-                            sensorValues['moldrisklevel'];
-      }
+      // Merge the filtered values into our data object
+      Object.assign(data, filteredValues);
       
       console.log('Final prepared data for storage:', data);
       
-      // Check if we actually have any sensor data
-      if (!data.temperature && !data.humidity && !data.illuminance && 
-          !data.co2 && !data.air_pressure && !data.mold_risk_level) {
+      // Check if we have any sensor data
+      if (!Object.keys(filteredValues).length) {
         console.warn('No sensor data was found for device', deviceId);
         
         // Store the data anyway, but warn the user

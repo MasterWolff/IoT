@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { mapArduinoToDatabaseProperties } from '@/lib/propertyMapper';
 
 // Store Arduino data with exact column names from the database
 export async function POST(request: Request) {
@@ -18,43 +19,29 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    // Create record with column names that match the database exactly
+    // Map Arduino properties using our standardized mapper
+    const sensorValues = mapArduinoToDatabaseProperties(arduinoData);
+    
+    // Filter out properties that don't exist in our database
+    const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel'];
+    const filteredValues: Record<string, any> = {};
+    
+    Object.entries(sensorValues).forEach(([key, value]) => {
+      if (validColumns.includes(key)) {
+        filteredValues[key] = value;
+      } else {
+        console.log(`Skipping property ${key} as it doesn't exist in the database`);
+      }
+    });
+    
+    // Create record with proper database field names
     const environmentalData = {
       painting_id: paintingId,
       device_id: deviceId,
       timestamp: new Date().toISOString(),
-      temperature: null,
-      humidity: null,
-      airpressure: null,     // Lowercase, no underscore
-      co2concentration: null, // Lowercase, no underscore
-      moldrisklevel: null,    // Lowercase, no underscore
+      ...filteredValues,
       created_at: new Date().toISOString()
-      // No updated_at column in the database
     };
-    
-    // Map Arduino property names to database column names
-    for (const prop of arduinoData) {
-      switch (prop.variable_name) {
-        case 'temperature':
-          environmentalData.temperature = prop.value;
-          break;
-        case 'humidity':
-          environmentalData.humidity = prop.value;
-          break;
-        case 'illuminance':
-          // Illuminance not in database table, so skip
-          break;
-        case 'co2Concentration':
-          environmentalData.co2concentration = prop.value; // Match database column name
-          break;
-        case 'airPressure':
-          environmentalData.airpressure = prop.value; // Match database column name
-          break;
-        case 'moldRiskLevel':
-          environmentalData.moldrisklevel = prop.value; // Match database column name
-          break;
-      }
-    }
     
     // Insert environmental data
     const { data, error } = await supabase
@@ -81,11 +68,41 @@ export async function POST(request: Request) {
       })
       .eq('id', deviceId);
     
-    return NextResponse.json({
-      success: true,
-      message: 'Arduino data saved successfully',
-      data: data[0]
-    });
+    // Check for alerts after saving data
+    try {
+      // Construct alert check URL with the device ID
+      const alertUrl = new URL(`${request.url.split('/api/')[0]}/api/alerts`);
+      alertUrl.searchParams.append('deviceId', deviceId);
+      alertUrl.searchParams.append('limit', '1');
+      
+      // Call alerts API
+      const alertResponse = await fetch(alertUrl.toString());
+      const alertData = await alertResponse.json();
+      
+      // Return data with alert status
+      return NextResponse.json({
+        success: true,
+        message: 'Arduino data saved successfully',
+        data: data[0],
+        alerts: {
+          checked: true,
+          count: alertData.count || 0,
+          hasAlerts: alertData.count > 0
+        }
+      });
+    } catch (alertError) {
+      console.error('Error checking alerts:', alertError);
+      // Still return success for data saving, just note alert check failed
+      return NextResponse.json({
+        success: true,
+        message: 'Arduino data saved successfully, but alert check failed',
+        data: data[0],
+        alerts: {
+          checked: false,
+          error: alertError instanceof Error ? alertError.message : 'Failed to check alerts'
+        }
+      });
+    }
   } catch (error) {
     console.error('Error saving Arduino data:', error);
     return NextResponse.json({

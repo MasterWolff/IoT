@@ -136,17 +136,17 @@ export function MeasurementTabs() {
     return <Badge variant="success">Normal</Badge>;
   };
 
-  // Filter measurements for each type and get latest few
+  // Filter and sort measurements for each tab
   const temperatureMeasurements = measurements
     .filter(m => m.temperature !== null)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
-
+    
   const humidityMeasurements = measurements
     .filter(m => m.humidity !== null)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
-
+    
   const co2Measurements = measurements
     .filter(m => m.co2concentration !== null)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -390,11 +390,11 @@ export function MeasurementTabs() {
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
                             <TableCell>
-                              {measurement.airpressure !== null ? `${measurement.airpressure} hPa` : 'N/A'}
+                              {measurement.airpressure !== null ? `${measurement.airpressure.toFixed(1)} hPa` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.airpressure, null, 1000)}
+                              {getStatusBadge(measurement.airpressure, 950, 1050)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -431,12 +431,16 @@ export function MeasurementTabs() {
                         {moldRiskMeasurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell>
-                              {measurement.moldrisklevel !== null ? `${measurement.moldrisklevel}` : 'N/A'}
+                            <TableCell className={
+                              measurement.moldrisklevel && measurement.moldrisklevel > 3 
+                                ? "font-medium text-amber-600" 
+                                : ""
+                            }>
+                              {measurement.moldrisklevel !== null ? `Level ${measurement.moldrisklevel}` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.moldrisklevel, null, 100)}
+                              {getStatusBadge(measurement.moldrisklevel, null, 3)}
                             </TableCell>
                           </TableRow>
                         ))}

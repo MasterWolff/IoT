@@ -1,14 +1,37 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { PROPERTY_MAPPINGS } from '@/lib/propertyMapper';
+
+// Define types for alerts and related data
+interface Alert {
+  id: string;
+  painting_id: string;
+  device_id: string;
+  environmental_data_id: string;
+  alert_type: string;
+  threshold_exceeded: 'upper' | 'lower';
+  measured_value: number;
+  threshold_value: number;
+  material_id: string;
+  timestamp: string;
+  created_at: string;
+  paintings: any;
+  devices: any;
+  materials: any;
+}
 
 // GET alerts by checking environmental data against material thresholds
 export async function GET(request: Request) {
   try {
+    console.log('Alerts API called');
+    
     // Extract query parameters
     const { searchParams } = new URL(request.url);
     const paintingId = searchParams.get('paintingId');
     const deviceId = searchParams.get('deviceId');
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 20;
+    
+    console.log(`Query params: paintingId=${paintingId}, deviceId=${deviceId}, limit=${limit}`);
     
     // First, get all paintings with their associated materials
     let paintingsQuery = supabase
@@ -28,6 +51,8 @@ export async function GET(request: Request) {
         { status: 500 }
       );
     }
+    
+    console.log(`Found ${paintings?.length || 0} paintings`);
     
     // Now, get environmental data for these paintings
     let envDataQuery = supabase
@@ -54,154 +79,126 @@ export async function GET(request: Request) {
       );
     }
     
-    // Calculate alerts based on environmental data and material thresholds
-    const alerts = [];
+    console.log(`Found ${envData?.length || 0} environmental data records`);
+    if (envData && envData.length > 0) {
+      console.log('Sample env data:', JSON.stringify(envData[0], null, 2));
+    }
     
-    for (const data of envData) {
-      // Find the painting and its materials
-      const painting = paintings.find(p => p.id === data.painting_id);
-      if (!painting || !painting.painting_materials) continue;
+    // Calculate alerts based on environmental data and material thresholds
+    const alerts: Alert[] = [];
+    
+    // Helper to check threshold for any property
+    const checkThreshold = (data: any, material: any, propConfig: any): Alert | null => {
+      const { dbName, arduinoNames } = propConfig;
+      const value = data[dbName];
       
-      // Check each material associated with the painting
-      for (const pm of painting.painting_materials) {
-        if (!pm.materials) continue;
-        const material = pm.materials;
-        
-        // Check temperature thresholds
-        if (data.temperature !== null) {
-          if ((material.threshold_temperature_lower !== null && 
-               data.temperature < material.threshold_temperature_lower) ||
-              (material.threshold_temperature_upper !== null && 
-               data.temperature > material.threshold_temperature_upper)) {
-            
-            alerts.push({
-              id: `temp-${data.id}-${material.id}`,
-              painting_id: data.painting_id,
-              device_id: data.device_id,
-              environmental_data_id: data.id,
-              alert_type: 'temperature',
-              threshold_exceeded: data.temperature > material.threshold_temperature_upper ? 'upper' : 'lower',
-              measured_value: data.temperature,
-              threshold_value: data.temperature > material.threshold_temperature_upper ? 
-                material.threshold_temperature_upper : material.threshold_temperature_lower,
-              material_id: material.id,
-              timestamp: data.timestamp,
-              created_at: data.created_at || data.timestamp,
-              paintings: painting,
-              devices: data.devices,
-              materials: material
-            });
-          }
-        }
-        
-        // Check humidity thresholds
-        if (data.humidity !== null) {
-          if ((material.threshold_humidity_lower !== null && 
-               data.humidity < material.threshold_humidity_lower) ||
-              (material.threshold_humidity_upper !== null && 
-               data.humidity > material.threshold_humidity_upper)) {
-            
-            alerts.push({
-              id: `hum-${data.id}-${material.id}`,
-              painting_id: data.painting_id,
-              device_id: data.device_id,
-              environmental_data_id: data.id,
-              alert_type: 'humidity',
-              threshold_exceeded: data.humidity > material.threshold_humidity_upper ? 'upper' : 'lower',
-              measured_value: data.humidity,
-              threshold_value: data.humidity > material.threshold_humidity_upper ? 
-                material.threshold_humidity_upper : material.threshold_humidity_lower,
-              material_id: material.id,
-              timestamp: data.timestamp,
-              created_at: data.created_at || data.timestamp,
-              paintings: painting,
-              devices: data.devices,
-              materials: material
-            });
-          }
-        }
-        
-        // Check illuminance thresholds
-        if (data.illuminance !== null) {
-          if ((material.threshold_illuminance_lower !== null && 
-               data.illuminance < material.threshold_illuminance_lower) ||
-              (material.threshold_illuminance_upper !== null && 
-               data.illuminance > material.threshold_illuminance_upper)) {
-            
-            alerts.push({
-              id: `light-${data.id}-${material.id}`,
-              painting_id: data.painting_id,
-              device_id: data.device_id,
-              environmental_data_id: data.id,
-              alert_type: 'illuminance',
-              threshold_exceeded: data.illuminance > material.threshold_illuminance_upper ? 'upper' : 'lower',
-              measured_value: data.illuminance,
-              threshold_value: data.illuminance > material.threshold_illuminance_upper ? 
-                material.threshold_illuminance_upper : material.threshold_illuminance_lower,
-              material_id: material.id,
-              timestamp: data.timestamp,
-              created_at: data.created_at || data.timestamp,
-              paintings: painting,
-              devices: data.devices,
-              materials: material
-            });
-          }
-        }
-        
-        // Check CO2 thresholds
-        if (data.co2Concentration !== null) {
-          if ((material.threshold_co2Concentration_lower !== null && 
-               data.co2Concentration < material.threshold_co2Concentration_lower) ||
-              (material.threshold_co2Concentration_upper !== null && 
-               data.co2Concentration > material.threshold_co2Concentration_upper)) {
-            
-            alerts.push({
-              id: `co2-${data.id}-${material.id}`,
-              painting_id: data.painting_id,
-              device_id: data.device_id,
-              environmental_data_id: data.id,
-              alert_type: 'co2Concentration',
-              threshold_exceeded: data.co2Concentration > material.threshold_co2Concentration_upper ? 'upper' : 'lower',
-              measured_value: data.co2Concentration,
-              threshold_value: data.co2Concentration > material.threshold_co2Concentration_upper ? 
-                material.threshold_co2Concentration_upper : material.threshold_co2Concentration_lower,
-              material_id: material.id,
-              timestamp: data.timestamp,
-              created_at: data.created_at || data.timestamp,
-              paintings: painting,
-              devices: data.devices,
-              materials: material
-            });
-          }
-        }
-        
-        // Check mold risk level thresholds
-        if (data.moldRiskLevel !== null) {
-          if ((material.threshold_moldRiskLevel_lower !== null && 
-               data.moldRiskLevel < material.threshold_moldRiskLevel_lower) ||
-              (material.threshold_moldRiskLevel_upper !== null && 
-               data.moldRiskLevel > material.threshold_moldRiskLevel_upper)) {
-            
-            alerts.push({
-              id: `mold-${data.id}-${material.id}`,
-              painting_id: data.painting_id,
-              device_id: data.device_id,
-              environmental_data_id: data.id,
-              alert_type: 'moldRiskLevel',
-              threshold_exceeded: data.moldRiskLevel > material.threshold_moldRiskLevel_upper ? 'upper' : 'lower',
-              measured_value: data.moldRiskLevel,
-              threshold_value: data.moldRiskLevel > material.threshold_moldRiskLevel_upper ? 
-                material.threshold_moldRiskLevel_upper : material.threshold_moldRiskLevel_lower,
-              material_id: material.id,
-              timestamp: data.timestamp,
-              created_at: data.created_at || data.timestamp,
-              paintings: painting,
-              devices: data.devices,
-              materials: material
-            });
+      // Skip if no measurement value
+      if (value === null || value === undefined) {
+        console.log(`No value for ${dbName} in data record ${data.id}`);
+        return null;
+      }
+      
+      // Try different threshold field name formats
+      // Format 1: threshold_dbname_lower (e.g., threshold_temperature_lower)
+      let lowerThresholdKey = `threshold_${dbName}_lower`;
+      let upperThresholdKey = `threshold_${dbName}_upper`;
+      
+      // Format 2: threshold_originalname_lower (e.g., threshold_moldrisklevel_lower)
+      // This handles cases where the database column uses underscores but threshold fields don't
+      if (material[lowerThresholdKey] === undefined && material[upperThresholdKey] === undefined) {
+        const dbNameNoUnderscores = dbName.replace(/_/g, '');
+        lowerThresholdKey = `threshold_${dbNameNoUnderscores}_lower`;
+        upperThresholdKey = `threshold_${dbNameNoUnderscores}_upper`;
+      }
+      
+      // Format 3: threshold_arduinoNames_lower (e.g., threshold_co2concentration_lower)
+      if (material[lowerThresholdKey] === undefined && material[upperThresholdKey] === undefined) {
+        for (const arduinoName of arduinoNames) {
+          const arduinoLowerKey = `threshold_${arduinoName.toLowerCase()}_lower`;
+          const arduinoUpperKey = `threshold_${arduinoName.toLowerCase()}_upper`;
+          
+          if (material[arduinoLowerKey] !== undefined || material[arduinoUpperKey] !== undefined) {
+            lowerThresholdKey = arduinoLowerKey;
+            upperThresholdKey = arduinoUpperKey;
+            break;
           }
         }
       }
+      
+      // Check if thresholds are defined
+      const lowerThreshold = material[lowerThresholdKey];
+      const upperThreshold = material[upperThresholdKey];
+      
+      console.log(`Checking ${dbName}: value=${value}, lowerThresholdKey=${lowerThresholdKey}, upperThresholdKey=${upperThresholdKey}`);
+      console.log(`Threshold values: lowerThreshold=${lowerThreshold}, upperThreshold=${upperThreshold}`);
+      
+      // Check if value exceeds thresholds
+      if ((lowerThreshold !== null && lowerThreshold !== undefined && value < lowerThreshold) ||
+          (upperThreshold !== null && upperThreshold !== undefined && value > upperThreshold)) {
+        
+        const thresholdExceeded = (upperThreshold !== null && upperThreshold !== undefined && value > upperThreshold) ? 'upper' : 'lower';
+        const thresholdValue = thresholdExceeded === 'upper' ? upperThreshold : lowerThreshold;
+        
+        console.log(`ALERT: ${dbName} value ${value} exceeds threshold (${thresholdExceeded}: ${thresholdValue})`);
+        
+        // Use a standardized alert_type for consistency in the UI
+        let alertType = dbName;
+        if (dbName === 'co2concentration') alertType = 'co2';
+        if (dbName === 'moldrisklevel') alertType = 'mold_risk_level';
+        if (dbName === 'airpressure') alertType = 'airpressure';
+        
+        return {
+          id: `${dbName}-${data.id}-${material.id}`,
+          painting_id: data.painting_id,
+          device_id: data.device_id,
+          environmental_data_id: data.id,
+          alert_type: alertType,
+          threshold_exceeded: thresholdExceeded,
+          measured_value: value,
+          threshold_value: thresholdValue!,
+          material_id: material.id,
+          timestamp: data.timestamp,
+          created_at: data.created_at || data.timestamp,
+          paintings: data.paintings,
+          devices: data.devices,
+          materials: material
+        };
+      }
+      
+      return null;
+    };
+    
+    // Process all environmental data entries
+    for (const data of envData) {
+      // Find the painting and its materials
+      const painting = paintings.find(p => p.id === data.painting_id);
+      if (!painting || !painting.painting_materials) {
+        console.log(`No painting or materials found for data record ${data.id}, painting_id=${data.painting_id}`);
+        continue;
+      }
+      
+      // Check each material associated with the painting
+      for (const pm of painting.painting_materials) {
+        if (!pm.materials) {
+          console.log(`No materials found in painting_materials for painting ${painting.id}`);
+          continue;
+        }
+        const material = pm.materials;
+        
+        console.log(`Checking thresholds for painting ${painting.id}, material ${material.id}`);
+        console.log('Material thresholds:', JSON.stringify(material, null, 2));
+        
+        // Check thresholds for all supported properties
+        Object.values(PROPERTY_MAPPINGS).forEach(propConfig => {
+          const alert = checkThreshold(data, material, propConfig);
+          if (alert) alerts.push(alert);
+        });
+      }
+    }
+    
+    console.log(`Found ${alerts.length} alerts`);
+    if (alerts.length > 0) {
+      console.log('Sample alert:', JSON.stringify(alerts[0], null, 2));
     }
     
     return NextResponse.json({

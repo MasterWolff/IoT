@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { Painting, Material, Device, EnvironmentalData } from './supabase';
 import type { AlertInfo } from './emailService';
+import { PROPERTY_MAPPINGS } from './propertyMapper';
 
 // Paintings API
 export async function getPaintings() {
@@ -167,7 +168,22 @@ export async function storeSensorData(sensorData: Partial<EnvironmentalData>) {
       .eq('id', sensorData.device_id);
   }
   
-  return data;
+  // Check for alerts based on the newly stored data
+  try {
+    // We can either check all alerts or create a direct check for this specific measurement
+    const alertsResult = await checkAlertsAndNotify();
+    console.log(`Alert check completed: ${alertsResult.alertsCount} alerts found`);
+    
+    // Include alert info in the return data
+    return {
+      data: data,
+      alerts: alertsResult
+    };
+  } catch (alertError) {
+    console.error('Error checking for alerts:', alertError);
+    // Still return the data even if alert check fails
+    return data;
+  }
 }
 
 // Check for alerts based on environmental data and material thresholds
@@ -205,39 +221,27 @@ export async function getAlerts() {
       const material = pm.materials;
       if (!material) continue;
       
-      // Check temperature
-      if (data.temperature !== null && 
-          ((material.threshold_temperature_lower !== null && data.temperature < material.threshold_temperature_lower) ||
-           (material.threshold_temperature_upper !== null && data.temperature > material.threshold_temperature_upper))) {
-        return true;
-      }
-      
-      // Check humidity
-      if (data.humidity !== null && 
-          ((material.threshold_humidity_lower !== null && data.humidity < material.threshold_humidity_lower) ||
-           (material.threshold_humidity_upper !== null && data.humidity > material.threshold_humidity_upper))) {
-        return true;
-      }
-      
-      // Check illuminance
-      if (data.illuminance !== null && 
-          ((material.threshold_illuminance_lower !== null && data.illuminance < material.threshold_illuminance_lower) ||
-           (material.threshold_illuminance_upper !== null && data.illuminance > material.threshold_illuminance_upper))) {
-        return true;
-      }
-      
-      // Check CO2
-      if (data.co2 !== null && 
-          ((material.threshold_co2_lower !== null && data.co2 < material.threshold_co2_lower) ||
-           (material.threshold_co2_upper !== null && data.co2 > material.threshold_co2_upper))) {
-        return true;
-      }
-      
-      // Check mold risk
-      if (data.mold_risk_level !== null && 
-          ((material.threshold_mold_risk_level_lower !== null && data.mold_risk_level < material.threshold_mold_risk_level_lower) ||
-           (material.threshold_mold_risk_level_upper !== null && data.mold_risk_level > material.threshold_mold_risk_level_upper))) {
-        return true;
+      // Check each property using the property mapper
+      for (const property of Object.values(PROPERTY_MAPPINGS)) {
+        const { dbName } = property;
+        const value = data[dbName];
+        
+        // Skip if no value for this property
+        if (value === null || value === undefined) continue;
+        
+        // Get threshold field names
+        const lowerThresholdKey = `threshold_${dbName}_lower`;
+        const upperThresholdKey = `threshold_${dbName}_upper`;
+        
+        // Get the threshold values
+        const lowerThreshold = material[lowerThresholdKey];
+        const upperThreshold = material[upperThresholdKey];
+        
+        // Check if value exceeds thresholds
+        if ((lowerThreshold !== null && value < lowerThreshold) ||
+            (upperThreshold !== null && value > upperThreshold)) {
+          return true;
+        }
       }
     }
     

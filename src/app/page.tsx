@@ -53,7 +53,7 @@ type EnvironmentalData = {
 };
 
 // Types for alerts related to specific environment types
-type AlertType = 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel';
+type AlertType = 'temperature' | 'humidity' | 'co2' | 'airpressure' | 'mold_risk_level';
 
 type Alert = {
   id: string;
@@ -77,6 +77,8 @@ type Alert = {
         threshold_co2concentration_upper: number | null;
         threshold_moldrisklevel_lower: number | null;
         threshold_moldrisklevel_upper: number | null;
+        threshold_airpressure_lower: number | null;
+        threshold_airpressure_upper: number | null;
       }
     }[];
   };
@@ -163,7 +165,7 @@ export default function Home() {
             action: alert.threshold_exceeded === 'upper' ? 'Adjust dehumidifier settings' : 'Increase humidity',
           };
           
-        case 'co2concentration':
+        case 'co2':
           return {
             type: 'co2',
             icon: <Wind />,
@@ -172,7 +174,7 @@ export default function Home() {
             action: alert.threshold_exceeded === 'upper' ? 'Improve ventilation' : 'Check CO2 sensor calibration',
           };
           
-        case 'moldrisklevel':
+        case 'mold_risk_level':
           return {
             type: 'mold',
             icon: <AlertCircle />,
@@ -190,11 +192,33 @@ export default function Home() {
             action: alert.threshold_exceeded === 'upper' ? 'Check ventilation' : 'Monitor conditions',
           };
           
+        // Added fallbacks for every possible variant of field names
+        case 'air_pressure':
+        case 'air pressure':
+          return {
+            type: 'pressure',
+            icon: <AlertCircle />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Air Pressure (${alert.measured_value} hPa)`,
+            problem: `Air pressure ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value} hPa`,
+            action: alert.threshold_exceeded === 'upper' ? 'Check ventilation' : 'Monitor conditions',
+          };
+          
+        case 'moldrisklevel':
+        case 'moldrisk':
+          return {
+            type: 'mold',
+            icon: <AlertCircle />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Mold Risk (Level ${alert.measured_value})`,
+            problem: `Mold risk level ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}`,
+            action: alert.threshold_exceeded === 'upper' ? 'Adjust humidity and temperature' : 'Check sensor calibration',
+          };
+          
         default:
+          console.log(`Unknown alert type: ${alert.alert_type}`, alert);
           return {
             type: 'unknown',
             icon: <AlertCircle />,
-            title: 'Environmental Alert',
+            title: `Environmental Alert (${alert.alert_type})`,
             problem: 'Environmental conditions outside safe thresholds',
             action: 'Check environmental controls',
           };

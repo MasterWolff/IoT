@@ -28,6 +28,14 @@ import {
   restartTimers
 } from '@/lib/autoFetchService';
 
+// Add type definition for DataItem
+type DataItem = {
+  id: string;
+  timestamp: string;
+  data: any;
+  paintingName?: string;
+};
+
 export default function AutoFetchPage() {
   // State from the global store
   const {
@@ -116,7 +124,7 @@ export default function AutoFetchPage() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Automatic Data Collection</h1>
         <p className="text-muted-foreground">
-          Configure and run automatic data collection from Arduino Cloud for a set duration.
+          Configure and run automatic data collection from Arduino Cloud at regular intervals. This fetches real sensor readings from your IoT devices.
         </p>
       </div>
       
@@ -303,16 +311,46 @@ export default function AutoFetchPage() {
                   const data = item.data;
                   if (!data) return null;
                   
+                  // Extract sensor values from properties if available
+                  let temperature = null;
+                  let humidity = null;
+                  let co2 = null;
+                  let pressure = null;
+                  let moldRisk = null;
+                  
+                  // Check if data contains properties array
+                  if (data.properties && Array.isArray(data.properties)) {
+                    // Extract values from properties
+                    for (const prop of data.properties) {
+                      if (prop.variable_name === 'temperature') {
+                        temperature = prop.last_value;
+                      } else if (prop.variable_name === 'humidity') {
+                        humidity = prop.last_value;
+                      } else if (prop.variable_name === 'pressure' || prop.variable_name === 'airPressure' || prop.variable_name === 'air_pressure') {
+                        pressure = prop.last_value;
+                      } else if (prop.variable_name === 'co2Concentration' || prop.variable_name === 'co2') {
+                        co2 = prop.last_value;
+                      } else if (prop.variable_name === 'moldRiskLevel' || prop.variable_name === 'moldRisk') {
+                        moldRisk = prop.last_value;
+                      }
+                    }
+                    
+                    // For debugging - log all property names
+                    if (index === 0) {
+                      console.log('Available properties:', data.properties.map((p: any) => p.variable_name));
+                    }
+                  }
+                  
                   return (
                     <TableRow key={`${index}-${item.id}`}>
-                      <TableCell>{data.painting_id ? data.painting_id.substring(0, 8) : 'N/A'}</TableCell>
-                      <TableCell>{data.device_id ? data.device_id.substring(0, 8) : 'N/A'}</TableCell>
-                      <TableCell>{data.temperature !== null ? `${Number(data.temperature).toFixed(1)}°C` : 'N/A'}</TableCell>
-                      <TableCell>{data.humidity !== null ? `${Number(data.humidity).toFixed(1)}%` : 'N/A'}</TableCell>
-                      <TableCell>{data.co2concentration !== null ? `${data.co2concentration} ppm` : 'N/A'}</TableCell>
-                      <TableCell>{data.airpressure !== null ? `${Number(data.airpressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
-                      <TableCell>{data.moldrisklevel !== null ? data.moldrisklevel : 'N/A'}</TableCell>
-                      <TableCell>{formatTimestamp(data.timestamp)}</TableCell>
+                      <TableCell>{item.paintingName || data.paintingName || "Unknown Painting"}</TableCell>
+                      <TableCell>{data.thingId ? data.thingId.substring(0, 8) : 'N/A'}</TableCell>
+                      <TableCell>{temperature !== null ? `${Number(temperature).toFixed(1)}°C` : 'N/A'}</TableCell>
+                      <TableCell>{humidity !== null ? `${Number(humidity).toFixed(1)}%` : 'N/A'}</TableCell>
+                      <TableCell>{co2 !== null ? `${co2} ppm` : 'N/A'}</TableCell>
+                      <TableCell>{pressure !== null ? `${Number(pressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
+                      <TableCell>{moldRisk !== null ? moldRisk : 'N/A'}</TableCell>
+                      <TableCell>{formatTimestamp(item.timestamp)}</TableCell>
                     </TableRow>
                   );
                 })}
