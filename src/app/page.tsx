@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MeasurementTabs } from "@/components/measurement-tabs";
+import DashboardRefresher from "@/components/DashboardRefresher";
 import { 
   DropletIcon, 
   ThermometerIcon, 
@@ -92,46 +93,52 @@ export default function Home() {
   const [dataPoints, setDataPoints] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
 
-  useEffect(() => {
-    async function fetchDashboardData() {
-      try {
-        setLoading(true);
-        setError(null);
+  // Define the fetch function as a callback to prevent unnecessary re-renders
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // Fetch paintings
-        const paintingsResponse = await fetch('/api/paintings');
-        const paintingsData = await paintingsResponse.json();
-        if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
-        setPaintings(paintingsData.paintings || []);
+      // Fetch paintings
+      const paintingsResponse = await fetch('/api/paintings');
+      const paintingsData = await paintingsResponse.json();
+      if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
+      setPaintings(paintingsData.paintings || []);
 
-        // Fetch devices
-        const devicesResponse = await fetch('/api/devices');
-        const devicesData = await devicesResponse.json();
-        if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
-        setDevices(devicesData.devices || []);
+      // Fetch devices
+      const devicesResponse = await fetch('/api/devices');
+      const devicesData = await devicesResponse.json();
+      if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
+      setDevices(devicesData.devices || []);
 
-        // Fetch alerts (these are calculated from environmental data, not stored in a table)
-        const alertsResponse = await fetch('/api/alerts');
-        const alertsData = await alertsResponse.json();
-        if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
-        setAlerts(alertsData.alerts || []);
-        
-        // Fetch environmental data for data points count
-        const envDataResponse = await fetch('/api/environmental-data');
-        const envData = await envDataResponse.json();
-        if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
-        setDataPoints(envData.count || 0);
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        setError('Failed to load dashboard data. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
+      // Fetch alerts (these are calculated from environmental data, not stored in a table)
+      const alertsResponse = await fetch('/api/alerts');
+      const alertsData = await alertsResponse.json();
+      if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
+      setAlerts(alertsData.alerts || []);
+      
+      // Fetch environmental data for data points count
+      const envDataResponse = await fetch('/api/environmental-data');
+      const envData = await envDataResponse.json();
+      if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
+      setDataPoints(envData.count || 0);
+      
+      // Update last refresh time
+      setLastRefresh(new Date().toISOString());
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again later.');
+    } finally {
+      setLoading(false);
     }
-
-    fetchDashboardData();
   }, []);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   // Helper function to determine alert type and icon
   const getAlertInfo = (alert: Alert) => {
@@ -156,7 +163,7 @@ export default function Home() {
             action: alert.threshold_exceeded === 'upper' ? 'Adjust dehumidifier settings' : 'Increase humidity',
           };
           
-        case 'co2':
+        case 'co2concentration':
           return {
             type: 'co2',
             icon: <Wind />,
@@ -165,13 +172,22 @@ export default function Home() {
             action: alert.threshold_exceeded === 'upper' ? 'Improve ventilation' : 'Check CO2 sensor calibration',
           };
           
-        case 'mold_risk_level':
+        case 'moldrisklevel':
           return {
             type: 'mold',
             icon: <AlertCircle />,
             title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Mold Risk (Level ${alert.measured_value})`,
             problem: `Mold risk level ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}`,
             action: alert.threshold_exceeded === 'upper' ? 'Adjust humidity and temperature' : 'Check sensor calibration',
+          };
+          
+        case 'airpressure':
+          return {
+            type: 'pressure',
+            icon: <AlertCircle />,
+            title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Air Pressure (${alert.measured_value} hPa)`,
+            problem: `Air pressure ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value} hPa`,
+            action: alert.threshold_exceeded === 'upper' ? 'Check ventilation' : 'Monitor conditions',
           };
           
         default:
@@ -278,23 +294,17 @@ export default function Home() {
   ).length;
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-6">
+      {/* Add the DashboardRefresher to listen for data updates */}
+      <DashboardRefresher onDataUpdate={fetchDashboardData} />
+      
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <div className="space-x-2">
-          <Link 
-            href="/data-tables" 
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            View Raw Data Tables
-          </Link>
-          <Link 
-            href="/test-arduino" 
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Test Arduino Integration
-          </Link>
-        </div>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        {lastRefresh && (
+          <div className="text-sm text-muted-foreground">
+            Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
+          </div>
+        )}
       </div>
       
       {error && (
