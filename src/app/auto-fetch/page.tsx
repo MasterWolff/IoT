@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { 
   Table, 
   TableBody, 
@@ -16,180 +15,104 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ClockIcon, DollarSignIcon, TimerIcon, TimerResetIcon, ClipboardCheckIcon, RotateCw } from "lucide-react";
+import { Loader2, ClockIcon, TimerIcon, TimerResetIcon, RotateCw } from "lucide-react";
 import { format } from 'date-fns';
+import AutoFetchDataListener from "@/components/DashboardRefresher";
+import { 
+  useAutoFetchStore, 
+  formatTime, 
+  formatTimestamp, 
+  initializeTimers,
+  startTimers,
+  stopTimers,
+  restartTimers
+} from '@/lib/autoFetchService';
 
 export default function AutoFetchPage() {
-  // State
-  const [isRunning, setIsRunning] = useState(false);
-  const [duration, setDuration] = useState(5); // Duration in minutes
-  const [interval, setInterval] = useState(5); // Interval in seconds
-  const [timeRemaining, setTimeRemaining] = useState(0); // Time remaining in seconds
-  const [fetchCount, setFetchCount] = useState(0);
-  const [successCount, setSuccessCount] = useState(0);
-  const [errorCount, setErrorCount] = useState(0);
-  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
-  const [nextFetchTime, setNextFetchTime] = useState<Date | null>(null);
-  const [recentData, setRecentData] = useState<any[]>([]);
-  const [isPaused, setIsPaused] = useState(false);
+  // State from the global store
+  const {
+    isRunning,
+    isPaused,
+    duration,
+    interval,
+    timeRemaining,
+    fetchCount,
+    successCount,
+    errorCount,
+    lastFetchTime,
+    nextFetchTime,
+    statusMessage,
+    recentData,
+    start,
+    stop,
+    pause,
+    fetchData: storeFetchData,
+    setDuration,
+    setInterval
+  } = useAutoFetchStore();
+  
+  // UI loading state
   const [loading, setLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Ready to start');
   
-  // References
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const fetchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Function to refresh data display - this is called when AutoFetchDataListener detects new data
+  const fetchData = () => {
+    console.log('Refreshing displayed data from store');
+    // The data is already in the store, we just need to trigger a re-render
+    // This could be extended to fetch additional data if needed
+  };
   
-  // Effects
-  
-  // Effect for the main countdown timer
+  // Initialize timers when component mounts or state changes
   useEffect(() => {
-    if (isRunning && !isPaused && timeRemaining > 0) {
-      timerRef.current = setTimeout(() => {
-        setTimeRemaining(prev => prev - 1);
-      }, 1000);
-      
-      return () => {
-        if (timerRef.current) {
-          clearTimeout(timerRef.current);
-        }
-      };
-    } else if (isRunning && timeRemaining <= 0) {
-      // Timer has ended
-      handleStop();
-    }
-  }, [isRunning, isPaused, timeRemaining]);
+    initializeTimers();
+    
+    // Cleanup when component unmounts
+    return () => {
+      // We don't stop the timers on unmount to let it run in background
+    };
+  }, []);
   
-  // Effect for scheduling the next data fetch
+  // Effect to restart timers when interval changes
   useEffect(() => {
     if (isRunning && !isPaused) {
-      // Schedule the next fetch
-      fetchTimerRef.current = setTimeout(() => {
-        fetchData();
-      }, interval * 1000);
-      
-      // Update next fetch time
-      const next = new Date();
-      next.setSeconds(next.getSeconds() + interval);
-      setNextFetchTime(next);
-      
-      return () => {
-        if (fetchTimerRef.current) {
-          clearTimeout(fetchTimerRef.current);
-          setNextFetchTime(null);
-        }
-      };
+      restartTimers();
     }
-  }, [isRunning, isPaused, interval, fetchCount, lastFetchTime]);
+  }, [interval, isRunning, isPaused]);
   
-  // Handler functions
+  // Handler for start button
   const handleStart = () => {
-    // Convert minutes to seconds
-    const totalSeconds = duration * 60;
-    setTimeRemaining(totalSeconds);
-    setIsRunning(true);
-    setFetchCount(0);
-    setSuccessCount(0);
-    setErrorCount(0);
-    setLastFetchTime(null);
-    setRecentData([]);
-    setStatusMessage('Starting data collection...');
-    
-    // Fetch data immediately
-    fetchData();
+    start();
+    startTimers();
   };
   
+  // Handler for stop button
   const handleStop = () => {
-    setIsRunning(false);
-    setIsPaused(false);
-    setTimeRemaining(0);
-    setNextFetchTime(null);
-    setStatusMessage('Data collection stopped');
-    
-    // Clear timers
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    
-    if (fetchTimerRef.current) {
-      clearTimeout(fetchTimerRef.current);
-      fetchTimerRef.current = null;
-    }
+    stop();
+    stopTimers();
   };
   
+  // Handler for pause button
   const handlePause = () => {
-    setIsPaused(!isPaused);
-    setStatusMessage(isPaused ? 'Data collection resumed' : 'Data collection paused');
-    
-    // Clear the fetch timer when pausing
-    if (!isPaused && fetchTimerRef.current) {
-      clearTimeout(fetchTimerRef.current);
-      fetchTimerRef.current = null;
-      setNextFetchTime(null);
+    pause();
+    if (!isPaused) {
+      // If we're about to pause
+      stopTimers();
+    } else {
+      // If we're about to resume
+      startTimers();
     }
   };
   
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setStatusMessage('Generating test sensor data...');
-      
-      // Record fetch time
-      const fetchTime = new Date();
-      setLastFetchTime(fetchTime);
-      setFetchCount(prev => prev + 1);
-      
-      // Fetch data directly from the test endpoint
-      const response = await fetch('/api/test-arduino-data');
-      const data = await response.json();
-      
-      // Debug - log the entire response
-      console.log('API Response:', data);
-      
-      if (data.success) {
-        setSuccessCount(prev => prev + 1);
-        setStatusMessage(`Successfully saved test sensor data`);
-        
-        // The data is already in the right format, just use it directly
-        setRecentData(prev => {
-          // Create a simple wrapper around the saved data that matches our display format
-          const newItem = {
-            id: new Date().getTime(), // Just for a key
-            timestamp: new Date().toISOString(),
-            data: data.saved_data
-          };
-          
-          // Add new data to the beginning of the array
-          return [newItem, ...prev].slice(0, 10);
-        });
-      } else {
-        setErrorCount(prev => prev + 1);
-        setStatusMessage(`Error: ${data.error || 'Failed to generate test data'}`);
-      }
-    } catch (error) {
-      setErrorCount(prev => prev + 1);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Failed to generate test data'}`);
-      console.error('Error generating test data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Format time as mm:ss
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-  
-  // Format timestamp
-  const formatTimestamp = (date: Date | null) => {
-    if (!date) return 'N/A';
-    return format(date, 'HH:mm:ss');
+  // Handler for fetch now button
+  const handleFetchNow = async () => {
+    setLoading(true);
+    await storeFetchData();
+    setLoading(false);
   };
   
   return (
     <div className="container mx-auto py-6 space-y-8">
+      <AutoFetchDataListener onDataUpdate={fetchData} />
+      
       <div>
         <h1 className="text-3xl font-bold mb-2">Automatic Data Collection</h1>
         <p className="text-muted-foreground">
@@ -339,7 +262,7 @@ export default function AutoFetchPage() {
                 variant="outline" 
                 size="sm" 
                 className="w-full" 
-                onClick={fetchData}
+                onClick={handleFetchNow}
                 disabled={loading || (!isRunning && recentData.length === 0)}
               >
                 <RotateCw className="h-4 w-4 mr-2" />
@@ -389,7 +312,7 @@ export default function AutoFetchPage() {
                       <TableCell>{data.co2concentration !== null ? `${data.co2concentration} ppm` : 'N/A'}</TableCell>
                       <TableCell>{data.airpressure !== null ? `${Number(data.airpressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
                       <TableCell>{data.moldrisklevel !== null ? data.moldrisklevel : 'N/A'}</TableCell>
-                      <TableCell>{format(new Date(data.timestamp), 'HH:mm:ss')}</TableCell>
+                      <TableCell>{formatTimestamp(data.timestamp)}</TableCell>
                     </TableRow>
                   );
                 })}

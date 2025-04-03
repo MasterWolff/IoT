@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -19,14 +19,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import DashboardRefresher from "@/components/DashboardRefresher";
 import { 
   ThermometerIcon, 
   DropletIcon, 
   SunIcon, 
   Wind,
-  AlertCircle 
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { format } from 'date-fns';
+import { Button } from './ui/button';
 
 // Type definitions for the environmental data
 type EnvironmentalMeasurement = {
@@ -55,46 +58,55 @@ export function MeasurementTabs() {
   const [measurements, setMeasurements] = useState<EnvironmentalMeasurement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
 
-  useEffect(() => {
-    async function fetchEnvironmentalData() {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Use the endpoint to fetch environmental data
-        const response = await fetch('/api/environmental-data');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch environmental data: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('Environmental data response:', data); // Debug log
-        
-        if (data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
-          // Data is available
-          setMeasurements(data.data);
-          console.log('First measurement:', data.data[0]); // Debug: Log first data point
-        } else {
-          console.warn('No environmental data found or empty array returned');
-          setError('No environmental data available. Please add some sensor readings first.');
-        }
-
-        // Debug log
-        if (!data.temperature && !data.humidity && !data.co2concentration && 
-            !data.airpressure && !data.moldrisklevel) {
-          console.warn('No measurement values found in the data');
-        }
-      } catch (err) {
-        console.error('Error fetching environmental data:', err);
-        setError('Failed to load measurement data. Please try again later.');
-      } finally {
-        setLoading(false);
+  const fetchEnvironmentalData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Use the endpoint to fetch environmental data
+      const response = await fetch('/api/environmental-data');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch environmental data: ${response.status}`);
       }
+      
+      const data = await response.json();
+      console.log('Environmental data response:', data); // Debug log
+      
+      if (data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
+        // Data is available
+        setMeasurements(data.data);
+        console.log('First measurement:', data.data[0]); // Debug: Log first data point
+      } else {
+        console.warn('No environmental data found or empty array returned');
+        setError('No environmental data available. Please add some sensor readings first.');
+      }
+
+      // Debug log
+      if (!data.temperature && !data.humidity && !data.co2concentration && 
+          !data.airpressure && !data.moldrisklevel) {
+        console.warn('No measurement values found in the data');
+      }
+      
+      // Update last refresh time
+      setLastRefresh(new Date().toISOString());
+    } catch (err) {
+      console.error('Error fetching environmental data:', err);
+      setError('Failed to load measurement data. Please try again later.');
+    } finally {
+      setLoading(false);
     }
-    
-    fetchEnvironmentalData();
   }, []);
+  
+  useEffect(() => {
+    fetchEnvironmentalData();
+  }, [fetchEnvironmentalData]);
+
+  // Handle manual refresh
+  const handleRefresh = () => {
+    fetchEnvironmentalData();
+  };
 
   // Helper function to format timestamp
   const formatTime = (timestamp: string) => {
@@ -152,6 +164,27 @@ export function MeasurementTabs() {
 
   return (
     <section>
+      {/* Add the dashboard refresher */}
+      <DashboardRefresher onDataUpdate={fetchEnvironmentalData} />
+      
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Environmental Measurements</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">
+            Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+      
       <Tabs defaultValue="temperature" className="w-full">
         <TabsList className="mb-4 bg-background border rounded-lg h-14 p-1">
           <TabsTrigger value="temperature" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
