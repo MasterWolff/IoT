@@ -1,4 +1,21 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IoT Museum Environmental Monitoring Dashboard
+
+A Next.js application for monitoring environmental conditions of artwork in museums using IoT devices. The dashboard provides real-time data visualization for temperature, humidity, light, and CO2 levels to ensure proper conservation of valuable paintings.
+
+## Features
+
+- Dashboard with key statistics and active alerts
+- Paintings management for tracking artwork
+- Devices management for IoT sensors
+- Materials tracking with environmental thresholds
+- Environmental data visualization with interactive tabs
+
+## Tech Stack
+
+- [Next.js](https://nextjs.org) - React framework
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS framework
+- [Shadcn UI](https://ui.shadcn.com) - Component library
+- [Supabase](https://supabase.com) - Backend and database
 
 ## Getting Started
 
@@ -16,21 +33,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Database Schema
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The application uses the following database tables:
+- `paintings` - Stores information about artworks
+- `materials` - Contains data about painting materials and their environmental thresholds
+- `painting_materials` - Junction table for the many-to-many relationship
+- `devices` - Information about IoT sensors
+- `environmental_data` - Sensor readings with timestamps
 
-## Learn More
+## Deployment
 
-To learn more about Next.js, take a look at the following resources:
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new) from the creators of Next.js.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Check out [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
