@@ -52,6 +52,16 @@ export async function sendAlertEmail(alert: AlertInfo): Promise<boolean> {
   try {
     // Create a transporter
     const transporter = nodemailer.createTransport(emailConfig.smtp);
+    
+    // Verify connection configuration
+    try {
+      console.log('Verifying email connection...');
+      await transporter.verify();
+      console.log('Email connection verified successfully');
+    } catch (verifyError) {
+      console.error('Email connection verification failed:', verifyError);
+      throw verifyError;
+    }
 
     // Format the timestamp
     const formattedTime = format(new Date(alert.timestamp), 'PPpp');

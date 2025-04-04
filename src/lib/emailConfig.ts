@@ -3,17 +3,22 @@
 export const emailConfig = {
   // SMTP server settings
   smtp: {
-    host: process.env.EMAIL_SMTP_HOST || 'smtp.example.com',
-    port: parseInt(process.env.EMAIL_SMTP_PORT || '587'),
+    host: process.env.EMAIL_SMTP_HOST || 'smtp.gmx.de',
+    port: parseInt(process.env.EMAIL_SMTP_PORT || '465'),
     secure: process.env.EMAIL_SMTP_SECURE === 'true',
     auth: {
       user: process.env.EMAIL_SMTP_USER || '',
       pass: process.env.EMAIL_SMTP_PASSWORD || '',
     },
+    // Add security settings for SSL connections
+    tls: {
+      // Do not fail on invalid certs
+      rejectUnauthorized: false
+    }
   },
   
   // Email settings
-  from: process.env.EMAIL_FROM || 'art-monitoring@example.com',
+  from: process.env.EMAIL_FROM || 'museum-iot@example.com',
   
   // Recipients for alerts
   alertRecipients: (process.env.EMAIL_ALERT_RECIPIENTS || '').split(',').filter(Boolean),
