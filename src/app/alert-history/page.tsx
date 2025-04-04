@@ -16,6 +16,16 @@ import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from 'next/link';
 
+// Define a type for paintings
+type Painting = {
+  id: string;
+  name: string;
+  artist: string;
+  creation_date?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 // Define types for alerts
 type AlertHistoryItem = {
   id: string;
@@ -28,7 +38,7 @@ type AlertHistoryItem = {
   timestamp: string;
   created_at: string;
   dismissed_at: string | null;
-  paintings: {
+  paintings?: {
     name: string;
     artist: string;
   };
@@ -47,14 +57,42 @@ export default function AlertHistory() {
       setLoading(true);
       setError(null);
 
-      // Fetch all alerts from our alerts table
-      const response = await fetch('/api/alerts-table');
+      // Fetch all alerts from our consolidated alerts API
+      const response = await fetch('/api/alerts');
       if (!response.ok) {
         throw new Error('Failed to fetch alert history');
       }
       
       const data = await response.json();
-      setAlerts(data.alerts || []);
+      const alerts = data.alerts || [];
+      
+      // Fetch paintings to add painting names to alerts that don't have that info
+      const paintingsResponse = await fetch('/api/paintings');
+      if (paintingsResponse.ok) {
+        const paintingsData = await paintingsResponse.json();
+        const paintings = paintingsData.paintings || [];
+        
+        // Create a map of painting IDs to painting info
+        const paintingMap = new Map<string, Painting>();
+        paintings.forEach((painting: Painting) => {
+          paintingMap.set(painting.id, painting);
+        });
+        
+        // Add painting info to alerts that don't have it
+        for (const alert of alerts) {
+          if (!alert.paintings && alert.painting_id) {
+            const painting = paintingMap.get(alert.painting_id);
+            if (painting) {
+              alert.paintings = {
+                name: painting.name,
+                artist: painting.artist
+              };
+            }
+          }
+        }
+      }
+      
+      setAlerts(alerts);
       setLastRefresh(new Date().toISOString());
     } catch (err) {
       console.error('Error fetching alert history:', err);
@@ -73,7 +111,7 @@ export default function AlertHistory() {
   const handleDismissAlert = useCallback(async (alertId: string) => {
     try {
       // Update the alert status in the database
-      const response = await fetch('/api/alerts-table', {
+      const response = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -106,7 +144,7 @@ export default function AlertHistory() {
   const handleReactivateAlert = useCallback(async (alertId: string) => {
     try {
       // Update the alert status in the database
-      const response = await fetch('/api/alerts-table', {
+      const response = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -321,7 +359,11 @@ export default function AlertHistory() {
                     
                     <AlertDescription>
                       <div className="mt-2 space-y-1">
-                        <p><strong>Painting:</strong> {alert.paintings?.name || 'Unknown'} by {alert.paintings?.artist || 'Unknown Artist'}</p>
+                        {alert.paintings ? (
+                          <p><strong>Painting:</strong> {alert.paintings.name || 'Unknown'} by {alert.paintings.artist || 'Unknown Artist'}</p>
+                        ) : (
+                          <p><strong>Painting ID:</strong> {alert.painting_id || 'Unknown'}</p>
+                        )}
                         <p><strong>Problem:</strong> {alertInfo.problem}</p>
                         <p><strong>Action:</strong> {alertInfo.action}</p>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">

@@ -4,19 +4,49 @@ import { supabase } from '@/lib/supabase';
 // Endpoint to clean up the database
 export async function POST(request: Request) {
   try {
-    // First, get a count of how many rows we have
-    const { count, error: countError } = await supabase
+    // First, get a count of how many rows we have in environmental_data
+    const { count: envCount, error: envCountError } = await supabase
       .from('environmental_data')
       .select('*', { count: 'exact', head: true });
     
-    if (countError) {
+    if (envCountError) {
       return NextResponse.json({
         success: false,
-        error: `Failed to count environmental data: ${countError.message}`
+        error: `Failed to count environmental data: ${envCountError.message}`
+      }, { status: 500 });
+    }
+
+    // Get a count of how many alerts we have
+    const { count: alertCount, error: alertCountError } = await supabase
+      .from('alerts')
+      .select('*', { count: 'exact', head: true });
+    
+    if (alertCountError && alertCountError.code !== '42P01') { // Ignore table not found error
+      return NextResponse.json({
+        success: false,
+        error: `Failed to count alerts: ${alertCountError.message}`
       }, { status: 500 });
     }
     
-    // Use RPC to execute a SQL command to delete all data
+    // Delete all alerts first
+    let alertsDeleted = 0;
+    try {
+      const { error: deleteAlertError } = await supabase
+        .from('alerts')
+        .delete()
+        .gte('created_at', '2000-01-01');
+      
+      if (!deleteAlertError) {
+        alertsDeleted = alertCount || 0;
+      } else if (deleteAlertError.code !== '42P01') { // Ignore if table doesn't exist
+        console.error('Error deleting alerts:', deleteAlertError);
+      }
+    } catch (alertError) {
+      console.error('Failed to delete alerts:', alertError);
+      // Continue with environmental data deletion even if alert deletion fails
+    }
+    
+    // Use RPC to execute a SQL command to delete all environmental data
     const { error: deleteError } = await supabase.rpc('clear_environmental_data');
     
     if (deleteError) {
@@ -38,9 +68,10 @@ export async function POST(request: Request) {
     
     return NextResponse.json({
       success: true,
-      message: 'Environmental data cleaned successfully',
+      message: 'Database cleaned successfully',
       deletedData: {
-        environmentalData: count || 0
+        environmentalData: envCount || 0,
+        alerts: alertsDeleted
       }
     });
   } catch (error) {

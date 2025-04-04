@@ -115,8 +115,9 @@ export default function Home() {
       if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
       setDevices(devicesData.devices || []);
 
-      // Fetch alerts (these are calculated from environmental data, not stored in a table)
-      const alertsResponse = await fetch('/api/alerts');
+      // Fetch alerts using the consolidated API endpoint
+      // This will both calculate new alerts and return existing ones from the database
+      const alertsResponse = await fetch('/api/alerts?status=active');
       const alertsData = await alertsResponse.json();
       if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
       setAlerts(alertsData.alerts || []);
@@ -146,7 +147,7 @@ export default function Home() {
   const handleDismissAlert = useCallback(async (alertId: string) => {
     try {
       // Update the alert status in the database
-      const response = await fetch('/api/alerts-table', {
+      const response = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

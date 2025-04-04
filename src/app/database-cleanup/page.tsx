@@ -13,7 +13,7 @@ export default function DatabaseCleanupPage() {
   const [error, setError] = useState<string | null>(null);
 
   const cleanupDatabase = async () => {
-    if (!confirm('Are you sure you want to delete all environmental data? This will also remove all alerts since they are generated from this data. This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete all environmental data and alerts from the database? This action cannot be undone.')) {
       return;
     }
 
@@ -59,9 +59,8 @@ export default function DatabaseCleanupPage() {
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-800">Warning</AlertTitle>
               <AlertDescription className="text-amber-700">
-                This action will permanently delete all environmental data readings from the database.
-                This will also remove all alerts since they are generated from this data.
-                This action cannot be undone, so make sure you have backups if needed.
+                This action will permanently delete all environmental data readings and all alerts from the database.
+                This data cannot be recovered after deletion. Please make sure you have backups if you need this data for future reference.
               </AlertDescription>
             </Alert>
             
@@ -78,10 +77,10 @@ export default function DatabaseCleanupPage() {
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertTitle className="text-green-800">Success</AlertTitle>
                 <AlertDescription className="text-green-700">
-                  Database cleanup completed successfully. All environmental data has been deleted,
-                  which will also remove any alerts since they are generated from this data.
+                  Database cleanup completed successfully. Environmental data and alerts have been deleted.
                   <ul className="mt-2 list-disc list-inside">
                     <li>Deleted environmental data records: {result.deletedData.environmentalData}</li>
+                    <li>Deleted alerts: {result.deletedData.alerts}</li>
                   </ul>
                 </AlertDescription>
               </Alert>

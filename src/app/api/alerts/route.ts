@@ -1,300 +1,347 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, AlertRecord } from '@/lib/supabase';
 import { PROPERTY_MAPPINGS } from '@/lib/propertyMapper';
 
-// Define types for alerts and related data
-interface Alert {
-  id: string;
-  painting_id: string;
-  device_id: string;
-  environmental_data_id: string;
-  alert_type: string;
-  threshold_exceeded: 'upper' | 'lower';
-  measured_value: number;
-  threshold_value: number;
-  material_id: string;
-  timestamp: string;
-  created_at: string;
-  paintings: any;
-  devices: any;
-  materials: any;
-}
-
-// Helper function to store alert in the alerts table
-async function storeAlertRecord(alert: Alert) {
+// Ensure alerts table exists
+async function ensureAlertsTableExists() {
   try {
-    // Check if the alert already exists in our table to avoid duplicates
-    const { data: existingAlert, error: checkError } = await supabase
+    // Check if alerts table exists by trying to select from it
+    const { error } = await supabase
       .from('alerts')
       .select('id')
-      .eq('environmental_data_id', alert.environmental_data_id)
-      .eq('alert_type', alert.alert_type)
-      .single();
-    
-    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected
-      console.error('Error checking for existing alert:', checkError);
-      return;
-    }
-    
-    // If alert already exists, don't create a duplicate
-    if (existingAlert) {
-      console.log(`Alert already exists in database: ${existingAlert.id}`);
-      return;
-    }
-    
-    // Store the alert in the alerts table
-    const { error: insertError } = await supabase
-      .from('alerts')
-      .insert([{
-        id: alert.id,
-        painting_id: alert.painting_id,
-        device_id: alert.device_id,
-        environmental_data_id: alert.environmental_data_id,
-        alert_type: alert.alert_type,
-        threshold_exceeded: alert.threshold_exceeded,
-        measured_value: alert.measured_value,
-        threshold_value: alert.threshold_value,
-        status: 'active',
-        timestamp: alert.timestamp,
-        created_at: new Date().toISOString()
-      }]);
-    
-    if (insertError) {
-      // If we get a table doesn't exist error, that's okay - the user probably 
-      // hasn't set up the alerts table yet. The alerts functionality will still work.
-      if (insertError.code !== '42P01') {
-        console.error('Error storing alert in database:', insertError);
+      .limit(1);
+
+    // If we get a specific error about the table not existing
+    if (error && error.code === '42P01') {
+      console.log('Alerts table does not exist. Creating it...');
+      
+      // Create the alerts table using raw SQL
+      const { error: sqlError } = await supabase.rpc('run_sql', {
+        query: `
+          CREATE TABLE IF NOT EXISTS alerts (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            painting_id UUID NOT NULL REFERENCES paintings(id),
+            device_id UUID REFERENCES devices(id),
+            environmental_data_id UUID REFERENCES environmental_data(id),
+            alert_type TEXT NOT NULL,
+            threshold_exceeded TEXT NOT NULL CHECK (threshold_exceeded IN ('upper', 'lower')),
+            measured_value NUMERIC NOT NULL,
+            threshold_value NUMERIC NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'dismissed')),
+            timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE,
+            dismissed_at TIMESTAMP WITH TIME ZONE,
+            FOREIGN KEY (painting_id) REFERENCES paintings(id)
+          );
+          
+          -- Add index for faster queries on painting_id
+          CREATE INDEX IF NOT EXISTS idx_alerts_painting_id ON alerts(painting_id);
+          
+          -- Add index for status queries
+          CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+        `
+      });
+      
+      if (sqlError) {
+        console.error('Error creating alerts table:', sqlError);
+        throw new Error('Could not create alerts table');
       }
+    } else if (error) {
+      console.error('Error checking alerts table:', error);
+    } else {
+      console.log('Alerts table exists');
     }
-  } catch (error) {
-    console.error('Error in storeAlertRecord:', error);
-    // Don't throw error, just log it - we want the original alerts functionality to continue
+  } catch (err) {
+    console.error('Error ensuring alerts table exists:', err);
+    throw err;
   }
 }
 
-// GET alerts by checking environmental data against material thresholds
+// Store a newly calculated alert in the database
+async function storeAlertRecord(alert: any) {
+  try {
+    // Check if this alert already exists to avoid duplicates
+    const { data: existingAlerts, error: checkError } = await supabase
+      .from('alerts')
+      .select('id')
+      .eq('painting_id', alert.painting_id)
+      .eq('alert_type', alert.alert_type)
+      .eq('threshold_exceeded', alert.threshold_exceeded)
+      .eq('status', 'active');
+    
+    if (checkError) {
+      console.error('Error checking for existing alerts:', checkError);
+      return;
+    }
+    
+    if (existingAlerts && existingAlerts.length > 0) {
+      console.log(`Alert already exists for painting ${alert.painting_id} with type ${alert.alert_type}`);
+      return existingAlerts[0]; // Return existing alert
+    }
+    
+    // Format the alert for insertion
+    const alertRecord: Partial<AlertRecord> = {
+      painting_id: alert.painting_id,
+      device_id: alert.device_id,
+      environmental_data_id: alert.environmental_data_id,
+      alert_type: alert.alert_type,
+      threshold_exceeded: alert.threshold_exceeded,
+      measured_value: alert.measured_value,
+      threshold_value: alert.threshold_value,
+      status: 'active',
+      timestamp: alert.timestamp || new Date().toISOString()
+    };
+    
+    console.log('Storing alert in database:', JSON.stringify(alertRecord, null, 2));
+    
+    // Insert the alert
+    const { data, error } = await supabase
+      .from('alerts')
+      .insert([alertRecord])
+      .select();
+    
+    if (error) {
+      console.error('Error inserting alert into database:', error);
+      return null;
+    } else {
+      console.log('Successfully stored alert:', data?.[0]?.id);
+      return data?.[0];
+    }
+  } catch (err) {
+    console.error('Failed to store alert in database:', err);
+    return null;
+  }
+}
+
+// GET route - Main alerts endpoint: calculate new alerts and fetch existing ones
 export async function GET(request: Request) {
   try {
-    console.log('Alerts API called');
+    // Ensure the alerts table exists
+    await ensureAlertsTableExists();
     
-    // Extract query parameters
-    const { searchParams } = new URL(request.url);
-    const paintingId = searchParams.get('paintingId');
-    const deviceId = searchParams.get('deviceId');
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 20;
+    // Parse query parameters
+    const url = new URL(request.url);
+    const paintingId = url.searchParams.get('paintingId');
+    const deviceId = url.searchParams.get('deviceId');
+    const status = url.searchParams.get('status');
+    const type = url.searchParams.get('type');
     
-    console.log(`Query params: paintingId=${paintingId}, deviceId=${deviceId}, limit=${limit}`);
+    // First, calculate new alerts from environmental data if not just requesting specific alerts
+    const calculateNew = url.searchParams.get('calculateNew') !== 'false';
+    let calculatedAlerts: any[] = [];
     
-    // First, get all paintings with their associated materials
-    let paintingsQuery = supabase
-      .from('paintings')
-      .select('*, painting_materials(materials(*)), devices(*)');
-    
-    if (paintingId) {
-      paintingsQuery = paintingsQuery.eq('id', paintingId);
+    if (calculateNew) {
+      // Fetch environmental data
+      const envDataParams = new URLSearchParams();
+      if (paintingId) envDataParams.set('paintingId', paintingId);
+      if (deviceId) envDataParams.set('deviceId', deviceId);
+      
+      const envDataUrl = `/api/environmental-data?${envDataParams.toString()}`;
+      
+      const envDataRes = await fetch(new URL(envDataUrl, request.url).toString());
+      if (!envDataRes.ok) {
+        throw new Error('Failed to fetch environmental data');
+      }
+      
+      const envData = await envDataRes.json();
+      const environmentalData = envData.data || [];
+      
+      // If there's no environmental data, we can't calculate alerts
+      if (environmentalData.length === 0) {
+        console.log('No environmental data found to calculate alerts');
+      } else {
+        // Fetch paintings with their materials to check thresholds
+        const paintingsRes = await fetch(new URL('/api/paintings', request.url).toString());
+        if (!paintingsRes.ok) {
+          throw new Error('Failed to fetch paintings');
+        }
+        
+        const paintingsData = await paintingsRes.json();
+        const paintings = paintingsData.paintings || [];
+        
+        // For each painting, find the environmental data and check against thresholds
+        for (const painting of paintings) {
+          if (!painting.painting_materials || painting.painting_materials.length === 0) {
+            console.log(`Painting ${painting.id} has no materials defined, skipping...`);
+            continue;
+          }
+          
+          // Filter environmental data for this painting
+          const paintingEnvData = environmentalData.filter((data: any) => data.painting_id === painting.id);
+          
+          if (paintingEnvData.length === 0) {
+            console.log(`No environmental data found for painting ${painting.id}`);
+            continue;
+          }
+          
+          // Get the most recent environmental data for this painting
+          const latestData = paintingEnvData.sort((a: any, b: any) => {
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          })[0];
+          
+          const materials = painting.painting_materials[0].materials;
+          
+          // Check each property against thresholds
+          for (const [propertyName, mapping] of Object.entries(PROPERTY_MAPPINGS)) {
+            if (!latestData[propertyName]) continue;
+            
+            const thresholdLower = materials[`threshold_${mapping.dbName}_lower`];
+            const thresholdUpper = materials[`threshold_${mapping.dbName}_upper`];
+            const value = latestData[propertyName];
+            
+            // Skip if thresholds are not set
+            if (thresholdLower === null && thresholdUpper === null) continue;
+            
+            if (thresholdLower !== null && value < thresholdLower) {
+              // Create a lower threshold alert
+              const alert = {
+                id: `${painting.id}-${propertyName}-lower-${latestData.timestamp}`,
+                painting_id: painting.id,
+                device_id: latestData.device_id,
+                environmental_data_id: latestData.id,
+                alert_type: propertyName,
+                threshold_exceeded: 'lower',
+                measured_value: value,
+                threshold_value: thresholdLower,
+                timestamp: latestData.timestamp
+              };
+              
+              // Store in database and add to results
+              const storedAlert = await storeAlertRecord(alert);
+              if (storedAlert) {
+                calculatedAlerts.push(storedAlert);
+              }
+            }
+            
+            if (thresholdUpper !== null && value > thresholdUpper) {
+              // Create an upper threshold alert
+              const alert = {
+                id: `${painting.id}-${propertyName}-upper-${latestData.timestamp}`,
+                painting_id: painting.id,
+                device_id: latestData.device_id,
+                environmental_data_id: latestData.id,
+                alert_type: propertyName,
+                threshold_exceeded: 'upper',
+                measured_value: value,
+                threshold_value: thresholdUpper,
+                timestamp: latestData.timestamp
+              };
+              
+              // Store in database and add to results
+              const storedAlert = await storeAlertRecord(alert);
+              if (storedAlert) {
+                calculatedAlerts.push(storedAlert);
+              }
+            }
+          }
+        }
+      }
     }
     
-    const { data: paintings, error: paintingsError } = await paintingsQuery;
+    // Now fetch alerts from the database with any filters
+    let query = supabase
+      .from('alerts')
+      .select('*')
+      .order('timestamp', { ascending: false });
     
-    if (paintingsError) {
-      console.error('Error fetching paintings:', paintingsError);
-      return NextResponse.json(
-        { error: paintingsError.message },
-        { status: 500 }
-      );
-    }
-    
-    console.log(`Found ${paintings?.length || 0} paintings`);
-    
-    // Now, get environmental data for these paintings
-    let envDataQuery = supabase
-      .from('environmental_data')
-      .select('*, paintings(*), devices(*)')
-      .order('timestamp', { ascending: false })
-      .limit(limit);
-    
+    // Apply filters if provided
     if (paintingId) {
-      envDataQuery = envDataQuery.eq('painting_id', paintingId);
+      query = query.eq('painting_id', paintingId);
     }
     
     if (deviceId) {
-      envDataQuery = envDataQuery.eq('device_id', deviceId);
+      query = query.eq('device_id', deviceId);
     }
     
-    const { data: envData, error: envDataError } = await envDataQuery;
+    if (status) {
+      query = query.eq('status', status);
+    }
     
-    if (envDataError) {
-      console.error('Error fetching environmental data:', envDataError);
+    if (type) {
+      query = query.eq('alert_type', type);
+    }
+    
+    const { data: databaseAlerts, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching alerts from database:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    
+    // Return both newly calculated and existing database alerts
+    // If an alert was just calculated and stored, it will also be in databaseAlerts,
+    // so we'll use a Set to track unique IDs to avoid duplicates
+    const allAlerts = [...databaseAlerts];
+    
+    console.log(`Found ${calculatedAlerts.length} new alerts, ${databaseAlerts.length} total alerts in database`);
+    
+    return NextResponse.json({
+      success: true,
+      count: allAlerts.length,
+      alerts: allAlerts
+    });
+  } catch (error) {
+    console.error('Error in GET alerts:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch alerts' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH route - update an alert (used for dismissing)
+export async function PATCH(request: Request) {
+  try {
+    // Ensure the alerts table exists
+    await ensureAlertsTableExists();
+    
+    // Get the alert data from the request
+    const { id, status } = await request.json();
+    
+    if (!id) {
       return NextResponse.json(
-        { error: envDataError.message },
-        { status: 500 }
+        { error: 'Missing required field: id' },
+        { status: 400 }
       );
     }
     
-    console.log(`Found ${envData?.length || 0} environmental data records`);
-    if (envData && envData.length > 0) {
-      console.log('Sample env data:', JSON.stringify(envData[0], null, 2));
-    }
-    
-    // Calculate alerts based on environmental data and material thresholds
-    const alerts: Alert[] = [];
-    
-    // Helper to check threshold for any property
-    const checkThreshold = (data: any, material: any, propConfig: any): Alert | null => {
-      const { dbName, arduinoNames } = propConfig;
-      const value = data[dbName];
-      
-      // Skip if no measurement value
-      if (value === null || value === undefined) {
-        console.log(`No value for ${dbName} in data record ${data.id}`);
-        return null;
-      }
-      
-      // Try different threshold field name formats
-      // Format 1: threshold_dbname_lower (e.g., threshold_temperature_lower)
-      let lowerThresholdKey = `threshold_${dbName}_lower`;
-      let upperThresholdKey = `threshold_${dbName}_upper`;
-      
-      // Format 2: threshold_originalname_lower (e.g., threshold_moldrisklevel_lower)
-      // This handles cases where the database column uses underscores but threshold fields don't
-      if (material[lowerThresholdKey] === undefined && material[upperThresholdKey] === undefined) {
-        const dbNameNoUnderscores = dbName.replace(/_/g, '');
-        lowerThresholdKey = `threshold_${dbNameNoUnderscores}_lower`;
-        upperThresholdKey = `threshold_${dbNameNoUnderscores}_upper`;
-      }
-      
-      // Format 3: threshold_arduinoNames_lower (e.g., threshold_co2concentration_lower)
-      if (material[lowerThresholdKey] === undefined && material[upperThresholdKey] === undefined) {
-        for (const arduinoName of arduinoNames) {
-          const arduinoLowerKey = `threshold_${arduinoName.toLowerCase()}_lower`;
-          const arduinoUpperKey = `threshold_${arduinoName.toLowerCase()}_upper`;
-          
-          if (material[arduinoLowerKey] !== undefined || material[arduinoUpperKey] !== undefined) {
-            lowerThresholdKey = arduinoLowerKey;
-            upperThresholdKey = arduinoUpperKey;
-            break;
-          }
-        }
-      }
-      
-      // Check if thresholds are defined
-      const lowerThreshold = material[lowerThresholdKey];
-      const upperThreshold = material[upperThresholdKey];
-      
-      console.log(`Checking ${dbName}: value=${value}, lowerThresholdKey=${lowerThresholdKey}, upperThresholdKey=${upperThresholdKey}`);
-      console.log(`Threshold values: lowerThreshold=${lowerThreshold}, upperThreshold=${upperThreshold}`);
-      
-      // Check if value exceeds thresholds
-      if ((lowerThreshold !== null && lowerThreshold !== undefined && value < lowerThreshold) ||
-          (upperThreshold !== null && upperThreshold !== undefined && value > upperThreshold)) {
-        
-        const thresholdExceeded = (upperThreshold !== null && upperThreshold !== undefined && value > upperThreshold) ? 'upper' : 'lower';
-        const thresholdValue = thresholdExceeded === 'upper' ? upperThreshold : lowerThreshold;
-        
-        console.log(`ALERT: ${dbName} value ${value} exceeds threshold (${thresholdExceeded}: ${thresholdValue})`);
-        
-        // Use a standardized alert_type for consistency in the UI
-        let alertType = dbName;
-        if (dbName === 'co2concentration') alertType = 'co2';
-        if (dbName === 'moldrisklevel') alertType = 'mold_risk_level';
-        if (dbName === 'airpressure') alertType = 'airpressure';
-        
-        return {
-          id: `${dbName}-${data.id}-${material.id}`,
-          painting_id: data.painting_id,
-          device_id: data.device_id,
-          environmental_data_id: data.id,
-          alert_type: alertType,
-          threshold_exceeded: thresholdExceeded,
-          measured_value: value,
-          threshold_value: thresholdValue!,
-          material_id: material.id,
-          timestamp: data.timestamp,
-          created_at: data.created_at || data.timestamp,
-          paintings: data.paintings,
-          devices: data.devices,
-          materials: material
-        };
-      }
-      
-      return null;
+    // Update the alert
+    const now = new Date().toISOString();
+    const updateData: Partial<AlertRecord> = {
+      updated_at: now
     };
     
-    // Process all environmental data entries
-    for (const data of envData) {
-      // Find the painting and its materials
-      const painting = paintings.find(p => p.id === data.painting_id);
-      if (!painting || !painting.painting_materials) {
-        console.log(`No painting or materials found for data record ${data.id}, painting_id=${data.painting_id}`);
-        continue;
-      }
-      
-      // Check each material associated with the painting
-      for (const pm of painting.painting_materials) {
-        if (!pm.materials) {
-          console.log(`No materials found in painting_materials for painting ${painting.id}`);
-          continue;
-        }
-        const material = pm.materials;
-        
-        console.log(`Checking thresholds for painting ${painting.id}, material ${material.id}`);
-        console.log('Material thresholds:', JSON.stringify(material, null, 2));
-        
-        // Check thresholds for all supported properties
-        Object.values(PROPERTY_MAPPINGS).forEach(propConfig => {
-          const alert = checkThreshold(data, material, propConfig);
-          if (alert) {
-            alerts.push(alert);
-            
-            // Store the alert in the alerts table (don't await to avoid slowing down response)
-            storeAlertRecord(alert).catch(err => {
-              console.error('Failed to store alert in database:', err);
-            });
-          }
-        });
-      }
+    // Set status and dismissed_at if provided
+    if (status === 'dismissed') {
+      updateData.status = 'dismissed';
+      updateData.dismissed_at = now;
+    } else if (status === 'active') {
+      updateData.status = 'active';
+      updateData.dismissed_at = null;
     }
     
-    // Now, try to fetch dismissed alerts from the alerts table to filter them out
-    try {
-      // Check if alerts table exists by trying to select from it
-      const { data: dismissedAlerts, error: alertsError } = await supabase
-        .from('alerts')
-        .select('id')
-        .eq('status', 'dismissed');
-        
-      if (!alertsError) {
-        // If alerts table exists, filter out dismissed alerts
-        const dismissedIds = new Set(dismissedAlerts.map(a => a.id));
-        const filteredAlerts = alerts.filter(alert => !dismissedIds.has(alert.id));
-        
-        console.log(`Found ${alerts.length} alerts, ${dismissedIds.size} dismissed, returning ${filteredAlerts.length}`);
-        
-        return NextResponse.json({
-          success: true,
-          count: filteredAlerts.length,
-          alerts: filteredAlerts
-        });
-      }
-    } catch (error) {
-      // Ignore errors here - if the alerts table doesn't exist, we'll just return all alerts
-      console.log('Could not check for dismissed alerts:', error);
-    }
+    // Update the alert
+    const { data, error } = await supabase
+      .from('alerts')
+      .update(updateData)
+      .eq('id', id)
+      .select();
     
-    console.log(`Found ${alerts.length} alerts`);
-    if (alerts.length > 0) {
-      console.log('Sample alert:', JSON.stringify(alerts[0], null, 2));
+    if (error) {
+      console.error('Error updating alert:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
     
     return NextResponse.json({
       success: true,
-      count: alerts.length,
-      alerts
+      message: 'Alert updated successfully',
+      alert: data[0]
     });
   } catch (error) {
-    console.error('Error calculating alerts:', error);
+    console.error('Error in PATCH alert:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to calculate alerts' },
+      { error: error instanceof Error ? error.message : 'Failed to update alert' },
       { status: 500 }
     );
   }
