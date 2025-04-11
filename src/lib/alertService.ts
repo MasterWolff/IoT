@@ -57,6 +57,7 @@ export interface EnvironmentalData {
   co2concentration: number | null;
   airpressure: number | null;
   moldrisklevel: number | null;
+  illuminance: number | null;
   paintings?: {
     id: string;
     name: string;

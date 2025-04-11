@@ -325,7 +325,7 @@ export class ArduinoCloudClient {
       
       // Filter out properties that don't exist in our database
       // This is important to prevent errors when trying to insert data
-      const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel'];
+      const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel', 'illuminance'];
       const filteredValues: Record<string, any> = {};
       
       Object.entries(mappedValues).forEach(([key, value]) => {

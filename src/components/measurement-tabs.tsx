@@ -45,6 +45,7 @@ type EnvironmentalMeasurement = {
   co2concentration: number | null;
   airpressure: number | null;
   moldrisklevel: number | null;
+  illuminance: number | null;
   paintings: {
     name: string;
     artist: string;
@@ -60,6 +61,8 @@ type EnvironmentalMeasurement = {
         threshold_moldrisklevel_upper: number | null;
         threshold_airpressure_lower: number | null;
         threshold_airpressure_upper: number | null;
+        threshold_illuminance_lower: number | null;
+        threshold_illuminance_upper: number | null;
       };
     }[];
   };
@@ -152,7 +155,7 @@ export function MeasurementTabs() {
   };
 
   // Helper to check if a value exceeds thresholds
-  const exceedsThresholds = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel'): boolean => {
+  const exceedsThresholds = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance'): boolean => {
     const value = measurement[type];
     if (value === null) return false;
     
@@ -167,12 +170,12 @@ export function MeasurementTabs() {
   };
 
   // Update cell styling to use the threshold check
-  const getCellStyle = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel'): string => {
+  const getCellStyle = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance'): string => {
     return exceedsThresholds(measurement, type) ? "font-medium text-amber-600" : "";
   };
 
   // Helper function to determine status badge
-  const getStatusBadge = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel') => {
+  const getStatusBadge = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance') => {
     const value = measurement[type];
     if (value === null) return <Badge variant="outline">No data</Badge>;
 
@@ -208,6 +211,11 @@ export function MeasurementTabs() {
     
   const moldRiskMeasurements = measurements
     .filter(m => m.moldrisklevel !== null)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 5);
+    
+  const illuminationMeasurements = measurements
+    .filter(m => m.illuminance !== null)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
 
@@ -255,6 +263,10 @@ export function MeasurementTabs() {
           <TabsTrigger value="moldRisk" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
             <AlertCircle className="h-4 w-4" />
             Mold Risk
+          </TabsTrigger>
+          <TabsTrigger value="illumination" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+            <SunIcon className="h-4 w-4" />
+            Illumination
           </TabsTrigger>
         </TabsList>
         
@@ -474,6 +486,48 @@ export function MeasurementTabs() {
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
                               {getStatusBadge(measurement, 'moldrisklevel')}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="illumination">
+              <Card className="shadow-sm border-t-2 border-t-blue-300">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <SunIcon className="h-5 w-5 text-muted-foreground" />
+                    Illumination Readings
+                  </CardTitle>
+                  <CardDescription>Last {illuminationMeasurements.length} illumination readings across monitored paintings</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {illuminationMeasurements.length === 0 ? (
+                    <div className="text-center py-4 text-muted-foreground">No illumination measurements available</div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-[30%]">Painting</TableHead>
+                          <TableHead>Illumination</TableHead>
+                          <TableHead>Time</TableHead>
+                          <TableHead className="text-right">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {illuminationMeasurements.map((measurement) => (
+                          <TableRow key={measurement.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                            <TableCell className={getCellStyle(measurement, 'illuminance')}>
+                              {measurement.illuminance !== null ? `${measurement.illuminance} lux` : 'N/A'}
+                            </TableCell>
+                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                            <TableCell className="text-right">
+                              {getStatusBadge(measurement, 'illuminance')}
                             </TableCell>
                           </TableRow>
                         ))}

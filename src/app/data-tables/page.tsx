@@ -359,7 +359,7 @@ export default function DataTables() {
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">{data.temperature !== null ? `${data.temperature}°C` : 'N/A'}</td>
                     <td className="px-4 py-2 text-sm text-gray-500">{data.humidity !== null ? `${data.humidity}%` : 'N/A'}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">Not available</td>
+                    <td className="px-4 py-2 text-sm text-gray-500">{data.illuminance !== null ? `${data.illuminance} lux` : 'N/A'}</td>
                     <td className="px-4 py-2 text-sm text-gray-500">{data.co2concentration !== null ? `${data.co2concentration} ppm` : 'N/A'}</td>
                   </tr>
                 ))}

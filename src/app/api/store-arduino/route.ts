@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const sensorValues = mapArduinoToDatabaseProperties(arduinoData);
     
     // Filter out properties that don't exist in our database
-    const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel'];
+    const validColumns = ['temperature', 'humidity', 'co2concentration', 'airpressure', 'moldrisklevel', 'illuminance'];
     const filteredValues: Record<string, any> = {};
     
     Object.entries(sensorValues).forEach(([key, value]) => {

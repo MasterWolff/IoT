@@ -302,6 +302,7 @@ export default function AutoFetchPage() {
                   <TableHead>Humidity</TableHead>
                   <TableHead>CO₂</TableHead>
                   <TableHead>Air Pressure</TableHead>
+                  <TableHead>Illumination</TableHead>
                   <TableHead>Mold Risk</TableHead>
                   <TableHead>Timestamp</TableHead>
                 </TableRow>
@@ -317,6 +318,7 @@ export default function AutoFetchPage() {
                   let co2 = null;
                   let pressure = null;
                   let moldRisk = null;
+                  let illumination = null;
                   
                   // Check if data contains properties array
                   if (data.properties && Array.isArray(data.properties)) {
@@ -332,6 +334,8 @@ export default function AutoFetchPage() {
                         co2 = prop.last_value;
                       } else if (prop.variable_name === 'moldRiskLevel' || prop.variable_name === 'moldRisk') {
                         moldRisk = prop.last_value;
+                      } else if (prop.variable_name === 'illumination' || prop.variable_name === 'illuminance' || prop.variable_name === 'light' || prop.variable_name === 'lightLevel') {
+                        illumination = prop.last_value;
                       }
                     }
                     
@@ -349,6 +353,7 @@ export default function AutoFetchPage() {
                       <TableCell>{humidity !== null ? `${Number(humidity).toFixed(1)}%` : 'N/A'}</TableCell>
                       <TableCell>{co2 !== null ? `${co2} ppm` : 'N/A'}</TableCell>
                       <TableCell>{pressure !== null ? `${Number(pressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
+                      <TableCell>{illumination !== null ? `${illumination} lux` : 'N/A'}</TableCell>
                       <TableCell>{moldRisk !== null ? moldRisk : 'N/A'}</TableCell>
                       <TableCell>{formatTimestamp(item.timestamp)}</TableCell>
                     </TableRow>

@@ -93,6 +93,13 @@ export default function MaterialsPage() {
       };
     }
     
+    if (baseField === 'illuminance') {
+      return {
+        lower: material.threshold_illuminance_lower,
+        upper: material.threshold_illuminance_upper
+      };
+    }
+    
     // For temperature and humidity, the naming is consistent with our expected pattern
     return {
       lower: material[`threshold_${baseField}_lower`],
@@ -133,6 +140,7 @@ export default function MaterialsPage() {
                     <TableHead>Temperature Range (°C)</TableHead>
                     <TableHead>Humidity Range (%)</TableHead>
                     <TableHead>CO₂ Range (ppm)</TableHead>
+                    <TableHead>Illuminance (lux)</TableHead>
                     <TableHead>Mold Risk Level</TableHead>
                     <TableHead>Max Air Pressure (hPa/hr)</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -151,6 +159,7 @@ export default function MaterialsPage() {
                       const humidity = getThresholdValues(material, 'humidity');
                       const co2 = getThresholdValues(material, 'co2');
                       const moldRisk = getThresholdValues(material, 'mold_risk_level');
+                      const illuminance = getThresholdValues(material, 'illuminance');
                       
                       return (
                         <TableRow key={material.id}>
@@ -163,6 +172,9 @@ export default function MaterialsPage() {
                           </TableCell>
                           <TableCell>
                             {formatRange(co2.lower, co2.upper, 'ppm')}
+                          </TableCell>
+                          <TableCell>
+                            {formatRange(illuminance.lower, illuminance.upper, 'lux')}
                           </TableCell>
                           <TableCell>
                             {formatRange(moldRisk.lower, moldRisk.upper, '')}
@@ -240,6 +252,16 @@ export default function MaterialsPage() {
                           getThresholdValues(selectedMaterial, 'co2').lower,
                           getThresholdValues(selectedMaterial, 'co2').upper,
                           'ppm'
+                        )}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Illuminance</span>
+                      <Badge variant="outline" className="font-mono">
+                        {formatRange(
+                          getThresholdValues(selectedMaterial, 'illuminance').lower,
+                          getThresholdValues(selectedMaterial, 'illuminance').upper,
+                          'lux'
                         )}
                       </Badge>
                     </div>

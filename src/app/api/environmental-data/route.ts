@@ -76,6 +76,7 @@ export async function POST(request: Request) {
         co2concentration: null,
         airpressure: null,
         moldrisklevel: null,
+        illuminance: null,
         created_at: new Date().toISOString()
       };
       
@@ -96,6 +97,10 @@ export async function POST(request: Request) {
             break;
           case 'moldRiskLevel':
             transformedData.moldrisklevel = prop.value;
+            break;
+          case 'illumination':
+          case 'illuminance':
+            transformedData.illuminance = prop.value;
             break;
         }
       }
@@ -157,6 +162,7 @@ export async function POST(request: Request) {
         co2concentration: body.co2concentration !== undefined ? body.co2concentration : null,
         airpressure: body.airpressure !== undefined ? body.airpressure : null,
         moldrisklevel: body.moldrisklevel !== undefined ? body.moldrisklevel : null,
+        illuminance: body.illuminance !== undefined ? body.illuminance : null,
         created_at: new Date().toISOString()
       };
       

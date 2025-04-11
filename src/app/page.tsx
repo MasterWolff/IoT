@@ -60,6 +60,7 @@ type EnvironmentalData = {
   co2concentration: number | null;
   airpressure: number | null;
   moldrisklevel: number | null;
+  illuminance: number | null;
   created_at: string;
 };
 

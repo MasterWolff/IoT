@@ -43,6 +43,12 @@ export const PROPERTY_MAPPINGS: Record<string, PropertyMapping> = {
     dbName: 'moldrisklevel', // Updated to match the actual database column name
     displayName: 'Mold Risk',
     unit: ''
+  },
+  illumination: {
+    arduinoNames: ['illumination', 'illuminance', 'light', 'lightlevel', 'light_level', 'illuminationlevel'],
+    dbName: 'illuminance', // Based on the field name in the database schema
+    displayName: 'Illumination',
+    unit: 'lux'
   }
 };
 

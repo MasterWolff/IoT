@@ -27,6 +27,8 @@ export type Material = {
   threshold_temperature_upper: number | null;
   threshold_moldrisklevel_lower: number | null;
   threshold_moldrisklevel_upper: number | null;
+  threshold_illuminance_lower: number | null;
+  threshold_illuminance_upper: number | null;
   created_at: string;
   updated_at: string;
 };
