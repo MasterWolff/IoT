@@ -80,9 +80,13 @@ export function MeasurementTabs() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
 
-  const fetchEnvironmentalData = useCallback(async () => {
+  const fetchEnvironmentalData = useCallback(async (options: {
+    showLoading?: boolean
+  } = { showLoading: false }) => {
     try {
-      setLoading(true);
+      if (options.showLoading) {
+        setLoading(true);
+      }
       setError(null);
       
       // Use the endpoint to fetch environmental data
@@ -124,12 +128,20 @@ export function MeasurementTabs() {
   }, []);
   
   useEffect(() => {
-    fetchEnvironmentalData();
+    // Initial fetch with loading indicator
+    fetchEnvironmentalData({ showLoading: true });
   }, [fetchEnvironmentalData]);
 
+  // Handler for data updates from the DashboardRefresher
+  const handleDataUpdate = useCallback(() => {
+    console.log('Data update received in measurement tabs');
+    // Refresh data without loading state
+    fetchEnvironmentalData({ showLoading: false });
+  }, [fetchEnvironmentalData]);
+  
   // Handle manual refresh
   const handleRefresh = () => {
-    fetchEnvironmentalData();
+    fetchEnvironmentalData({ showLoading: true });
   };
 
   // Helper function to format timestamp
@@ -222,7 +234,7 @@ export function MeasurementTabs() {
   return (
     <section>
       {/* Add the dashboard refresher */}
-      <DashboardRefresher onDataUpdate={fetchEnvironmentalData} />
+      <DashboardRefresher onDataUpdate={handleDataUpdate} />
       
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">Environmental Measurements</h2>

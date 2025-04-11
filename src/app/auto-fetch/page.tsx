@@ -62,11 +62,15 @@ export default function AutoFetchPage() {
   // UI loading state
   const [loading, setLoading] = useState(false);
   
+  // State to force re-renders without page refresh
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  
   // Function to refresh data display - this is called when AutoFetchDataListener detects new data
   const fetchData = () => {
     console.log('Refreshing displayed data from store');
     // The data is already in the store, we just need to trigger a re-render
-    // This could be extended to fetch additional data if needed
+    // Force a re-render by updating a state variable without changing the whole page
+    setLastRefresh(new Date());
   };
   
   // Initialize timers when component mounts or state changes

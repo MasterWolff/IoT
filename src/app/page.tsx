@@ -133,40 +133,58 @@ export default function Home() {
   const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
 
   // Define the fetch function as a callback to prevent unnecessary re-renders
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (options: { 
+    full?: boolean, 
+    alerts?: boolean, 
+    devices?: boolean,  
+    paintings?: boolean, 
+    dataPoints?: boolean
+  } = { full: true }) => {
     try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch paintings
-      const paintingsResponse = await fetch('/api/paintings');
-      const paintingsData = await paintingsResponse.json();
-      if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
-      setPaintings(paintingsData.paintings || []);
-
-      // Fetch devices
-      const devicesResponse = await fetch('/api/devices');
-      const devicesData = await devicesResponse.json();
-      if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
-      setDevices(devicesData.devices || []);
-
-      // Fetch alerts using the consolidated API endpoint
-      // This will both calculate new alerts and return existing ones from the database
-      const alertsResponse = await fetch('/api/alerts?status=active&calculateNew=true');
-      const alertsData = await alertsResponse.json();
-      if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
-      setAlerts(alertsData.alerts || []);
+      const { full, alerts: fetchAlerts, devices: fetchDevices, paintings: fetchPaintings, dataPoints: fetchDataPoints } = options;
       
-      console.log(`Fetched ${alertsData.alerts?.length || 0} active alerts for dashboard`);
-      if (alertsData.alerts?.length > 0) {
-        console.log('Active alerts:', alertsData.alerts.map((a: any) => `${a.alert_type}: ${a.measured_value}`));
+      // Only set loading state for full refreshes
+      if (full) {
+        setLoading(true);
+        setError(null);
+      }
+
+      // Fetch paintings if requested
+      if (full || fetchPaintings) {
+        const paintingsResponse = await fetch('/api/paintings');
+        const paintingsData = await paintingsResponse.json();
+        if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
+        setPaintings(paintingsData.paintings || []);
+      }
+
+      // Fetch devices if requested
+      if (full || fetchDevices) {
+        const devicesResponse = await fetch('/api/devices');
+        const devicesData = await devicesResponse.json();
+        if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
+        setDevices(devicesData.devices || []);
+      }
+
+      // Fetch alerts if requested (highest priority for updates)
+      if (full || fetchAlerts) {
+        const alertsResponse = await fetch('/api/alerts?status=active&calculateNew=true');
+        const alertsData = await alertsResponse.json();
+        if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
+        setAlerts(alertsData.alerts || []);
+        
+        console.log(`Fetched ${alertsData.alerts?.length || 0} active alerts for dashboard`);
+        if (alertsData.alerts?.length > 0) {
+          console.log('Active alerts:', alertsData.alerts.map((a: any) => `${a.alert_type}: ${a.measured_value}`));
+        }
       }
       
-      // Fetch environmental data for data points count
-      const envDataResponse = await fetch('/api/environmental-data');
-      const envData = await envDataResponse.json();
-      if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
-      setDataPoints(envData.count || 0);
+      // Fetch environmental data for data points count if requested
+      if (full || fetchDataPoints) {
+        const envDataResponse = await fetch('/api/environmental-data');
+        const envData = await envDataResponse.json();
+        if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
+        setDataPoints(envData.count || 0);
+      }
       
       // Update last refresh time
       setLastRefresh(new Date().toISOString());
@@ -178,23 +196,23 @@ export default function Home() {
     }
   }, []);
 
-  // Set up auto-refresh for dashboard data
+  // Set up initial data fetch
   useEffect(() => {
-    // Initial fetch
-    fetchDashboardData();
-    
-    // Set up auto-refresh every 30 seconds
-    const intervalId = setInterval(() => {
-      fetchDashboardData();
-    }, 30000); // 30 seconds
-    
-    // Clean up on component unmount
-    return () => clearInterval(intervalId);
+    // Initial full fetch
+    fetchDashboardData({ full: true });
+    // No more auto-refresh interval - we'll rely on the DashboardRefresher instead
   }, [fetchDashboardData]);
   
-  // Handle manual refresh button click
+  // Handle refresh triggered by DashboardRefresher
+  const handleDataUpdate = useCallback(() => {
+    console.log('Data update detected - performing targeted refresh');
+    // Only fetch the data that changes frequently: alerts and data points
+    fetchDashboardData({ full: false, alerts: true, dataPoints: true });
+  }, [fetchDashboardData]);
+  
+  // Handle manual refresh button click - do a full refresh
   const handleRefresh = () => {
-    fetchDashboardData();
+    fetchDashboardData({ full: true });
   };
 
   // Function to dismiss an alert
@@ -365,7 +383,7 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-6">
       {/* Add the DashboardRefresher to listen for data updates */}
-      <DashboardRefresher onDataUpdate={fetchDashboardData} />
+      <DashboardRefresher onDataUpdate={handleDataUpdate} />
       
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Dashboard</h1>
