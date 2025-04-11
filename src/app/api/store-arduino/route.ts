@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { mapArduinoToDatabaseProperties } from '@/lib/propertyMapper';
+import { processEnvironmentalData, AlertRecord } from '@/lib/alertService';
 
 // Store Arduino data with exact column names from the database
 export async function POST(request: Request) {
@@ -47,7 +48,17 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from('environmental_data')
       .insert(environmentalData)
-      .select();
+      .select(`
+        *,
+        paintings(
+          id, 
+          name, 
+          artist,
+          painting_materials(
+            materials(*)
+          )
+        )
+      `);
     
     if (error) {
       console.error('Error saving Arduino data:', error);
@@ -68,41 +79,34 @@ export async function POST(request: Request) {
       })
       .eq('id', deviceId);
     
-    // Check for alerts after saving data
+    // Process the new data for alerts immediately using our unified alert service
+    let alerts: AlertRecord[] = [];
+    
     try {
-      // Construct alert check URL with the device ID
-      const alertUrl = new URL(`${request.url.split('/api/')[0]}/api/alerts`);
-      alertUrl.searchParams.append('deviceId', deviceId);
-      alertUrl.searchParams.append('limit', '1');
+      console.log('Checking for alerts on new environmental data');
       
-      // Call alerts API
-      const alertResponse = await fetch(alertUrl.toString());
-      const alertData = await alertResponse.json();
-      
-      // Return data with alert status
-      return NextResponse.json({
-        success: true,
-        message: 'Arduino data saved successfully',
-        data: data[0],
-        alerts: {
-          checked: true,
-          count: alertData.count || 0,
-          hasAlerts: alertData.count > 0
-        }
-      });
+      if (data && data.length > 0) {
+        // Process environmental data to generate alerts
+        alerts = await processEnvironmentalData(data[0]);
+        console.log(`Generated ${alerts.length} alerts from new environmental data`);
+      }
     } catch (alertError) {
-      console.error('Error checking alerts:', alertError);
-      // Still return success for data saving, just note alert check failed
-      return NextResponse.json({
-        success: true,
-        message: 'Arduino data saved successfully, but alert check failed',
-        data: data[0],
-        alerts: {
-          checked: false,
-          error: alertError instanceof Error ? alertError.message : 'Failed to check alerts'
-        }
-      });
+      console.error('Error processing alerts:', alertError);
     }
+    
+    // Return data with alert information
+    return NextResponse.json({
+      success: true,
+      message: 'Arduino data saved successfully',
+      data: data[0],
+      alerts: {
+        checked: true,
+        count: alerts.length,
+        hasAlerts: alerts.length > 0,
+        alertDetails: alerts
+      }
+    });
+    
   } catch (error) {
     console.error('Error saving Arduino data:', error);
     return NextResponse.json({

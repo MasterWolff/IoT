@@ -76,12 +76,6 @@ export default function RootLayout({
                     Materials
                   </Link>
                   <Link 
-                    href="/test-arduino" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
-                  >
-                    Test Arduino
-                  </Link>
-                  <Link 
                     href="/auto-fetch" 
                     className="text-sm font-medium hover:text-blue-600 transition-colors"
                   >

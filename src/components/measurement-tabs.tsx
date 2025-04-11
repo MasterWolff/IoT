@@ -31,6 +31,9 @@ import {
 import { format } from 'date-fns';
 import { Button } from './ui/button';
 
+// Import our unified alert service
+import { exceedsThresholds as checkThresholds } from '@/lib/alertService';
+
 // Type definitions for the environmental data
 type EnvironmentalMeasurement = {
   id: string;
@@ -45,7 +48,20 @@ type EnvironmentalMeasurement = {
   paintings: {
     name: string;
     artist: string;
-    // Other painting fields if needed
+    painting_materials?: {
+      materials: {
+        threshold_temperature_lower: number | null;
+        threshold_temperature_upper: number | null;
+        threshold_humidity_lower: number | null;
+        threshold_humidity_upper: number | null;
+        threshold_co2concentration_lower: number | null;
+        threshold_co2concentration_upper: number | null;
+        threshold_moldrisklevel_lower: number | null;
+        threshold_moldrisklevel_upper: number | null;
+        threshold_airpressure_lower: number | null;
+        threshold_airpressure_upper: number | null;
+      };
+    }[];
   };
   devices: {
     name: string;
@@ -56,6 +72,7 @@ type EnvironmentalMeasurement = {
 
 export function MeasurementTabs() {
   const [measurements, setMeasurements] = useState<EnvironmentalMeasurement[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
@@ -83,10 +100,14 @@ export function MeasurementTabs() {
         setError('No environmental data available. Please add some sensor readings first.');
       }
 
-      // Debug log
-      if (!data.temperature && !data.humidity && !data.co2concentration && 
-          !data.airpressure && !data.moldrisklevel) {
-        console.warn('No measurement values found in the data');
+      // Also fetch alerts to use for status determination
+      const alertsResponse = await fetch('/api/alerts?status=active');
+      if (alertsResponse.ok) {
+        const alertsData = await alertsResponse.json();
+        if (alertsData.success && alertsData.alerts) {
+          setAlerts(alertsData.alerts);
+          console.log('Active alerts for measurement status:', alertsData.alerts.length);
+        }
       }
       
       // Update last refresh time
@@ -117,22 +138,50 @@ export function MeasurementTabs() {
     }
   };
 
+  // Helper to check for active alerts
+  const checkForActiveAlert = (measurement: EnvironmentalMeasurement, type: string): boolean => {
+    // Check if there's an alert that matches this measurement's painting and environmental attribute
+    const matchingAlerts = alerts.filter(alert => 
+      alert.painting_id === measurement.painting_id && 
+      ((type === 'co2concentration' && alert.alert_type === 'co2') ||
+       (type === 'moldrisklevel' && alert.alert_type === 'mold_risk_level') ||
+       alert.alert_type === type)
+    );
+    
+    return matchingAlerts.length > 0;
+  };
+
+  // Helper to check if a value exceeds thresholds
+  const exceedsThresholds = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel'): boolean => {
+    const value = measurement[type];
+    if (value === null) return false;
+    
+    // Check if there's an active alert already
+    if (checkForActiveAlert(measurement, type)) {
+      return true;
+    }
+    
+    // Use our unified alert service to check thresholds
+    const result = checkThresholds(measurement, type);
+    return result.exceeds;
+  };
+
+  // Update cell styling to use the threshold check
+  const getCellStyle = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel'): string => {
+    return exceedsThresholds(measurement, type) ? "font-medium text-amber-600" : "";
+  };
+
   // Helper function to determine status badge
-  const getStatusBadge = (value: number | null, thresholdLower: number | null = null, thresholdUpper: number | null = null) => {
+  const getStatusBadge = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel') => {
+    const value = measurement[type];
     if (value === null) return <Badge variant="outline">No data</Badge>;
 
-    // If thresholds are provided, use them to determine alert status
-    if ((thresholdLower !== null && value < thresholdLower) || 
-        (thresholdUpper !== null && value > thresholdUpper)) {
+    // Use the exceedsThresholds function for consistency
+    if (exceedsThresholds(measurement, type)) {
       return <Badge variant="warning">Alert</Badge>;
     }
-
-    // Default simple thresholds if none provided
-    if (value > 25 && thresholdUpper === null) return <Badge variant="warning">Alert</Badge>; // Temperature
-    if (value > 65 && thresholdUpper === null) return <Badge variant="warning">Alert</Badge>; // Humidity
-    if (value > 200 && thresholdUpper === null) return <Badge variant="warning">Alert</Badge>; // Light
-    if (value > 1000 && thresholdUpper === null) return <Badge variant="warning">Alert</Badge>; // CO2
     
+    // If no threshold is exceeded, display as normal
     return <Badge variant="success">Normal</Badge>;
   };
 
@@ -251,16 +300,12 @@ export function MeasurementTabs() {
                         {temperatureMeasurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={
-                              measurement.temperature && measurement.temperature > 25 
-                                ? "font-medium text-amber-600" 
-                                : ""
-                            }>
+                            <TableCell className={getCellStyle(measurement, 'temperature')}>
                               {measurement.temperature !== null ? `${measurement.temperature.toFixed(1)}°C` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.temperature, 15, 25)}
+                              {getStatusBadge(measurement, 'temperature')}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -297,16 +342,12 @@ export function MeasurementTabs() {
                         {humidityMeasurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={
-                              measurement.humidity && measurement.humidity > 65 
-                                ? "font-medium text-amber-600" 
-                                : ""
-                            }>
+                            <TableCell className={getCellStyle(measurement, 'humidity')}>
                               {measurement.humidity !== null ? `${measurement.humidity}%` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.humidity, 40, 65)}
+                              {getStatusBadge(measurement, 'humidity')}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -343,16 +384,12 @@ export function MeasurementTabs() {
                         {co2Measurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={
-                              measurement.co2concentration && measurement.co2concentration > 1000 
-                                ? "font-medium text-amber-600" 
-                                : ""
-                            }>
+                            <TableCell className={getCellStyle(measurement, 'co2concentration')}>
                               {measurement.co2concentration !== null ? `${measurement.co2concentration} ppm` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.co2concentration, null, 1000)}
+                              {getStatusBadge(measurement, 'co2concentration')}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -389,12 +426,12 @@ export function MeasurementTabs() {
                         {airPressureMeasurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell>
+                            <TableCell className={getCellStyle(measurement, 'airpressure')}>
                               {measurement.airpressure !== null ? `${measurement.airpressure.toFixed(1)} hPa` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.airpressure, 950, 1050)}
+                              {getStatusBadge(measurement, 'airpressure')}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -431,16 +468,12 @@ export function MeasurementTabs() {
                         {moldRiskMeasurements.map((measurement) => (
                           <TableRow key={measurement.id} className="hover:bg-muted/30">
                             <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={
-                              measurement.moldrisklevel && measurement.moldrisklevel > 3 
-                                ? "font-medium text-amber-600" 
-                                : ""
-                            }>
+                            <TableCell className={getCellStyle(measurement, 'moldrisklevel')}>
                               {measurement.moldrisklevel !== null ? `Level ${measurement.moldrisklevel}` : 'N/A'}
                             </TableCell>
                             <TableCell>{formatTime(measurement.timestamp)}</TableCell>
                             <TableCell className="text-right">
-                              {getStatusBadge(measurement.moldrisklevel, null, 3)}
+                              {getStatusBadge(measurement, 'moldrisklevel')}
                             </TableCell>
                           </TableRow>
                         ))}

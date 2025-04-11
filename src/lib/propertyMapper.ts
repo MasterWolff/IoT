@@ -48,28 +48,78 @@ export const PROPERTY_MAPPINGS: Record<string, PropertyMapping> = {
 
 /**
  * Maps Arduino property values to our database schema
- * @param sensorValues Object containing values from Arduino Cloud with arbitrary property names
+ * @param sensorValues Object or array containing values from Arduino Cloud with arbitrary property names
  * @returns Object with standardized property names matching our database schema
  */
-export function mapArduinoToDatabaseProperties(sensorValues: Record<string, any>): Record<string, any> {
+export function mapArduinoToDatabaseProperties(sensorValues: any): Record<string, any> {
   const mappedData: Record<string, any> = {};
   
-  // Convert all keys to lowercase for case-insensitive matching
-  const normalizedSensorValues: Record<string, any> = {};
-  Object.entries(sensorValues).forEach(([key, value]) => {
-    normalizedSensorValues[key.toLowerCase()] = value;
-  });
-  
-  // Map values from Arduino to our database schema
-  Object.values(PROPERTY_MAPPINGS).forEach(mapping => {
-    // Check each possible Arduino property name
-    for (const arduinoName of mapping.arduinoNames) {
-      if (normalizedSensorValues[arduinoName] !== undefined) {
-        mappedData[mapping.dbName] = normalizedSensorValues[arduinoName];
-        break; // Found a match, no need to check other possible names
+  // Handle case when input is an object (Arduino Cloud API format)
+  if (sensorValues && typeof sensorValues === 'object' && !Array.isArray(sensorValues)) {
+    // Convert all keys to lowercase for case-insensitive matching
+    Object.entries(sensorValues).forEach(([key, value]) => {
+      const propertyName = key.toLowerCase();
+      
+      // Map property to database column name
+      for (const mapping of Object.values(PROPERTY_MAPPINGS)) {
+        if (mapping.arduinoNames.includes(propertyName)) {
+          mappedData[mapping.dbName] = value;
+          break;
+        }
       }
-    }
-  });
+    });
+    
+    return mappedData;
+  }
+  
+  // Handle case when input is an array (store-arduino API format)
+  if (Array.isArray(sensorValues)) {
+    sensorValues.forEach((sensorItem) => {
+      // Handle name/value pair format (e.g., [{name: "co2Concentration", value: 800}])
+      if (sensorItem && typeof sensorItem === 'object') {
+        if ('name' in sensorItem && 'value' in sensorItem) {
+          const propertyName = String(sensorItem.name).toLowerCase();
+          const propertyValue = sensorItem.value;
+          
+          // Map each property to its database column name
+          for (const mapping of Object.values(PROPERTY_MAPPINGS)) {
+            if (mapping.arduinoNames.includes(propertyName)) {
+              mappedData[mapping.dbName] = propertyValue;
+              break;
+            }
+          }
+        }
+        // Handle variable_name/value pair format (e.g., [{variable_name: "co2Concentration", value: 800}])
+        else if ('variable_name' in sensorItem && 'value' in sensorItem) {
+          const propertyName = String(sensorItem.variable_name).toLowerCase();
+          const propertyValue = sensorItem.value;
+          
+          // Map each property to its database column name
+          for (const mapping of Object.values(PROPERTY_MAPPINGS)) {
+            if (mapping.arduinoNames.includes(propertyName)) {
+              mappedData[mapping.dbName] = propertyValue;
+              break;
+            }
+          }
+        }
+        // Handle direct property format within array items
+        else {
+          // Convert all keys to lowercase for case-insensitive matching
+          Object.entries(sensorItem).forEach(([key, value]) => {
+            const propertyName = key.toLowerCase();
+            
+            // Map each property to its database column name
+            for (const mapping of Object.values(PROPERTY_MAPPINGS)) {
+              if (mapping.arduinoNames.includes(propertyName)) {
+                mappedData[mapping.dbName] = value;
+                break;
+              }
+            }
+          });
+        }
+      }
+    });
+  }
   
   return mappedData;
 }

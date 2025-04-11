@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     // Start building the query
     let query = supabase
       .from('environmental_data')
-      .select('*, paintings(*), devices(*)')
+      .select('*, paintings(*, painting_materials(materials(*))), devices(*)')
       .order('timestamp', { ascending: false })
       .limit(limit);
     
