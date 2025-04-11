@@ -35,7 +35,20 @@ interface PaintingDetails extends Painting {
       description: string | null;
     };
   }>;
-  environmental_data: EnvironmentalData[];
+  environmental_data: Array<{
+    id: string;
+    painting_id: string;
+    device_id: string;
+    timestamp: string;
+    temperature: number | null;
+    humidity: number | null;
+    co2concentration: number | null;
+    airpressure: number | null;
+    moldrisklevel: number | null;
+    illuminance: number | null;
+    created_at: string;
+    updated_at: string;
+  }>;
 }
 
 interface Alert {
@@ -70,6 +83,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           throw new Error('Painting not found');
         }
         setPainting(data as PaintingDetails);
+        console.log('Environmental data received:', data.environmental_data);
 
         // Get public URL for the image if image_path exists
         if (data.image_path) {
@@ -116,18 +130,24 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     time: format(new Date(data.created_at), 'HH:mm:ss'),
     Temperature: Number(data.temperature) || 0,
     Humidity: Number(data.humidity) || 0,
-    CO2: Number(data.co2) || 0,
-    Light: Number(data.illuminance) || 0
+    CO2: Number(data.co2concentration) || 0,
+    'Air Pressure': Number(data.airpressure) || 0,
+    'Mold Risk': Number(data.moldrisklevel) || 0,
+    Illumination: Number(data.illuminance) || 0
   })).sort((a, b) => {
     // Sort by time to ensure proper line chart display
     return new Date(a.time).getTime() - new Date(b.time).getTime();
   }) || [];
-
+  
+  console.log('Chart data created:', chartData);
+  
   const metrics = {
     temperature: chartData.map(d => d.Temperature),
     humidity: chartData.map(d => d.Humidity),
     co2: chartData.map(d => d.CO2),
-    light: chartData.map(d => d.Light)
+    light: chartData.map(d => d.Illumination),
+    airpressure: chartData.map(d => d['Air Pressure']),
+    moldRisk: chartData.map(d => d['Mold Risk'])
   };
 
   const valueFormatter = (number: number) => `${number.toFixed(1)}`;
@@ -438,6 +458,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
               <TabsTrigger value="humidity">Humidity</TabsTrigger>
               <TabsTrigger value="co2">CO2</TabsTrigger>
               <TabsTrigger value="light">Light</TabsTrigger>
+              <TabsTrigger value="airpressure">Air Pressure</TabsTrigger>
+              <TabsTrigger value="moldRisk">Mold Risk</TabsTrigger>
             </TabsList>
 
             <TabsContent value="temperature" className="h-[400px]">
@@ -521,9 +543,55 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                   <div className="h-[300px] mt-4">
                     <LineChart
                       data={chartData}
-                      categories={["Light"]}
+                      categories={["Illumination"]}
                       index="time"
                       colors={["yellow"]}
+                      valueFormatter={valueFormatter}
+                      className="h-full w-full"
+                    />
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="airpressure" className="h-[400px]">
+              {chartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  No air pressure data available
+                </div>
+              ) : (
+                <div className="w-full h-full border rounded-lg p-4">
+                  <h3 className="text-lg font-medium">Air Pressure Over Time</h3>
+                  <p className="text-sm text-muted-foreground">Measured in hPa</p>
+                  <div className="h-[300px] mt-4">
+                    <LineChart
+                      data={chartData}
+                      categories={["Air Pressure"]}
+                      index="time"
+                      colors={["purple"]}
+                      valueFormatter={valueFormatter}
+                      className="h-full w-full"
+                    />
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="moldRisk" className="h-[400px]">
+              {chartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  No mold risk data available
+                </div>
+              ) : (
+                <div className="w-full h-full border rounded-lg p-4">
+                  <h3 className="text-lg font-medium">Mold Risk Level Over Time</h3>
+                  <p className="text-sm text-muted-foreground">Risk index</p>
+                  <div className="h-[300px] mt-4">
+                    <LineChart
+                      data={chartData}
+                      categories={["Mold Risk"]}
+                      index="time"
+                      colors={["brown"]}
                       valueFormatter={valueFormatter}
                       className="h-full w-full"
                     />
