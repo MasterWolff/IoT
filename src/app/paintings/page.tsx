@@ -15,6 +15,7 @@ import { PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getPaintings } from "@/lib/clientApi";
 import type { Painting } from "@/lib/supabase";
+import Link from "next/link";
 
 export default function PaintingsPage() {
   const [paintings, setPaintings] = useState<Painting[]>([]);
@@ -143,7 +144,9 @@ export default function PaintingsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex gap-2 justify-end">
-                              <Button variant="outline" size="sm">View</Button>
+                              <Link href={`/paintings/${painting.id}`}>
+                                <Button variant="outline" size="sm">View</Button>
+                              </Link>
                               <Button variant="outline" size="sm">Edit</Button>
                             </div>
                           </TableCell>

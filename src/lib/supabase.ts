@@ -13,6 +13,7 @@ export type Painting = {
   creation_date: string | null;
   created_at: string;
   updated_at: string;
+  image_path: string | null;
 };
 
 export type Material = {

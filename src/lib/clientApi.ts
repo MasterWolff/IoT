@@ -29,6 +29,7 @@ export async function getPaintingById(id: string) {
       environmental_data(*)
     `)
     .eq('id', id)
+    .order('created_at', { foreignTable: 'environmental_data', ascending: true })
     .single();
   
   if (error) {
