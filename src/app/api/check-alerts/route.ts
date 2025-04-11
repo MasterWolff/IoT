@@ -95,6 +95,11 @@ export async function GET(request: NextRequest) {
                             alert.alert_type === 'illuminance' ? 'Light Level' : 
                             alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
           
+          // Special formatting for mold risk
+          if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
+            return `${alertType}: High (Level ${alert.measured_value})`;
+          }
+          
           return `${alertType}: ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})`;
         }).join('\n');
         
@@ -112,6 +117,11 @@ export async function GET(request: NextRequest) {
                   const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                                     alert.alert_type === 'illuminance' ? 'Light Level' : 
                                     alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
+                  
+                  // Special formatting for mold risk
+                  if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
+                    return `<li><strong>${alertType}:</strong> High (Level ${alert.measured_value})</li>`;
+                  }
                   
                   return `<li><strong>${alertType}:</strong> ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})</li>`;
                 }).join('')}
@@ -179,6 +189,11 @@ export async function POST(request: NextRequest) {
                               alert.alert_type === 'illuminance' ? 'Light Level' : 
                               alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
             
+            // Special formatting for mold risk
+            if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
+              return `${alertType}: High (Level ${alert.measured_value})`;
+            }
+            
             return `${alertType}: ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})`;
           }).join('\n');
           
@@ -196,6 +211,11 @@ export async function POST(request: NextRequest) {
                     const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                                       alert.alert_type === 'illuminance' ? 'Light Level' : 
                                       alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
+                    
+                    // Special formatting for mold risk
+                    if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
+                      return `<li><strong>${alertType}:</strong> High (Level ${alert.measured_value})</li>`;
+                    }
                     
                     return `<li><strong>${alertType}:</strong> ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})</li>`;
                   }).join('')}

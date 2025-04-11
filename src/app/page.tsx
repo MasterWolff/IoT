@@ -265,13 +265,13 @@ export default function Home() {
         
       case 'moldrisk':
       case 'moldrisklevel':
-        case 'mold_risk_level':
-          return {
+      case 'mold_risk_level':
+        return {
           icon: <AlertCircle className="h-4 w-4" />,
-          title: `Mold Risk Level ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`,
-          problem: `Mold risk level of ${alert.measured_value} ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'is below'} the threshold of ${alert.threshold_value}.`,
-          action: alert.threshold_exceeded === 'upper' ? 'Urgently reduce humidity and increase ventilation.' : 'Monitor environmental conditions.'
-          };
+          title: `Mold Risk Level High`,
+          problem: `Mold risk level is high (Level ${alert.measured_value}).`,
+          action: `Urgently reduce humidity and increase ventilation to reduce mold growth risk.`
+        };
           
         case 'airpressure':
         case 'air_pressure':
@@ -351,7 +351,7 @@ export default function Home() {
         return `Humidity ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
       case 'moldrisk':
       case 'moldrisklevel':
-        return `Mold Risk Level ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+        return `High Mold Risk`;
       case 'airpressure':
         return `Air Pressure ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
       default:

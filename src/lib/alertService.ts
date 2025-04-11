@@ -236,6 +236,17 @@ export function exceedsThresholds(
     return { exceeds: false, threshold: null, value: null, thresholdValue: null };
   }
 
+  // Special case for mold risk level - directly use Arduino's risk value
+  // 0 = no risk, 1 = moderate risk, 2 = high risk (only 2 should trigger alerts)
+  if (property === 'moldrisklevel') {
+    return { 
+      exceeds: value === 2,  // Only level 2 (high risk) counts as exceeding threshold
+      threshold: value === 2 ? 'upper' : null,
+      value: value,
+      thresholdValue: 1  // The threshold between moderate and high risk
+    };
+  }
+
   let thresholdLower = null;
   let thresholdUpper = null;
 
@@ -253,6 +264,8 @@ export function exceedsThresholds(
       thresholdLower = materials.threshold_co2concentration_lower;
       thresholdUpper = materials.threshold_co2concentration_upper;
     } else if (property === 'moldrisklevel') {
+      // This should not happen anymore with our special case handling above,
+      // but keeping it for backward compatibility
       thresholdLower = materials.threshold_moldrisklevel_lower;
       thresholdUpper = materials.threshold_moldrisklevel_upper;
     } else {
@@ -365,6 +378,28 @@ export async function processEnvironmentalData(envData: EnvironmentalData): Prom
           alerts.push(storedAlert);
         }
       }
+      // Special handling for Mold Risk Level - use the Arduino-calculated value directly
+      // 0 = no risk, 1 = moderate risk, 2 = high risk (only 2 should trigger alerts)
+      else if (dbName === 'moldrisklevel' && value === 2) {
+        console.log(`High mold risk detected (level ${value}) - creating alert`);
+        const alertType = 'mold_risk_level';
+        
+        const alert: Partial<AlertRecord> = {
+          painting_id: envData.painting_id,
+          device_id: envData.device_id,
+          environmental_data_id: envData.id,
+          alert_type: alertType,
+          threshold_exceeded: 'upper',
+          measured_value: value,
+          threshold_value: 1, // Threshold between moderate and high risk
+          timestamp: envData.timestamp
+        };
+        
+        const storedAlert = await storeAlertRecord(alert);
+        if (storedAlert) {
+          alerts.push(storedAlert);
+        }
+      }
       continue;
     }
     
@@ -372,6 +407,31 @@ export async function processEnvironmentalData(envData: EnvironmentalData): Prom
     let alertType = dbName;
     if (dbName === 'co2concentration') alertType = 'co2';
     if (dbName === 'moldrisklevel') alertType = 'mold_risk_level';
+    
+    // Skip material threshold checks for moldrisklevel since we use Arduino's calculated values
+    if (dbName === 'moldrisklevel') {
+      // For moldrisklevel, we only create alerts for level 2 (high risk)
+      if (value === 2) {
+        console.log(`High mold risk detected (level ${value}) - creating alert`);
+        
+        const alert: Partial<AlertRecord> = {
+          painting_id: envData.painting_id,
+          device_id: envData.device_id,
+          environmental_data_id: envData.id,
+          alert_type: 'mold_risk_level',
+          threshold_exceeded: 'upper',
+          measured_value: value,
+          threshold_value: 1, // Threshold between moderate and high risk
+          timestamp: envData.timestamp
+        };
+        
+        const storedAlert = await storeAlertRecord(alert);
+        if (storedAlert) {
+          alerts.push(storedAlert);
+        }
+      }
+      continue; // Skip the regular threshold checking for mold risk
+    }
     
     // Debug log for CO2 values
     if (dbName === 'co2concentration') {

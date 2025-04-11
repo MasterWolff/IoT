@@ -200,9 +200,9 @@ export default function AlertHistory() {
         
       case 'mold_risk_level':
         return {
-          title: `${alert.threshold_exceeded === 'upper' ? 'High' : 'Low'} Mold Risk (Level ${alert.measured_value})`,
-          problem: `Mold risk level ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'below'} safe threshold of ${alert.threshold_value}`,
-          action: alert.threshold_exceeded === 'upper' ? 'Adjust humidity and temperature' : 'Check sensor calibration',
+          title: `High Mold Risk (Level ${alert.measured_value})`,
+          problem: `Mold risk level is high`,
+          action: `Adjust humidity and temperature to reduce mold growth risk`,
         };
         
       case 'airpressure':
