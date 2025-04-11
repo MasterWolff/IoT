@@ -54,13 +54,17 @@ interface PaintingDetails extends Painting {
 interface Alert {
   id: string;
   painting_id: string;
-  device_id: string;
-  alert_type: 'temperature' | 'humidity' | 'co2' | 'light';
+  device_id: string | null;
+  environmental_data_id: string | null;
+  alert_type: string;
+  threshold_exceeded: 'upper' | 'lower';
+  measured_value: number;
   threshold_value: number;
-  actual_value: number;
+  status: 'active' | 'dismissed';
+  timestamp: string;
   created_at: string;
-  resolved: boolean;
-  resolved_at: string | null;
+  updated_at: string | null;
+  dismissed_at: string | null;
 }
 
 export default function PaintingDetailsPage({ params }: { params: { id: string } }) {
@@ -82,8 +86,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
         if (!data) {
           throw new Error('Painting not found');
         }
+        
         setPainting(data as PaintingDetails);
-        console.log('Environmental data received:', data.environmental_data);
 
         // Get public URL for the image if image_path exists
         if (data.image_path) {
@@ -139,8 +143,6 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     return new Date(a.time).getTime() - new Date(b.time).getTime();
   }) || [];
   
-  console.log('Chart data created:', chartData);
-  
   const metrics = {
     temperature: chartData.map(d => d.Temperature),
     humidity: chartData.map(d => d.Humidity),
@@ -149,8 +151,6 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     airpressure: chartData.map(d => d['Air Pressure']),
     moldRisk: chartData.map(d => d['Mold Risk'])
   };
-
-  const valueFormatter = (number: number) => `${number.toFixed(1)}`;
 
   // Get color for alert type
   const getAlertTypeColor = (type: string) => {
@@ -165,11 +165,11 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
 
   // Group alerts by type and resolved status
   const groupedAlerts = alerts.reduce((acc, alert) => {
-    const key = `${alert.alert_type}-${alert.resolved}`;
+    const key = `${alert.alert_type}-${alert.status === 'dismissed'}`;
     if (!acc[key]) {
       acc[key] = {
         type: alert.alert_type,
-        resolved: alert.resolved,
+        resolved: alert.status === 'dismissed',
         count: 0,
         latest: null
       };
@@ -255,7 +255,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
             <span>Alerts</span>
             {alerts.length > 0 && (
               <Badge variant="destructive" className="ml-2">
-                {alerts.filter(a => !a.resolved).length} active
+                {alerts.filter(a => a.status === 'active').length} active
               </Badge>
             )}
           </CardTitle>
@@ -272,9 +272,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 if (!alert) return null;
                 
                 return (
-                  <div key={`${alert.alert_type}-${alert.resolved}`} className="flex items-center gap-4 p-3 rounded-lg border">
-                    <div className={`p-2 rounded-full ${alert.resolved ? 'bg-gray-100' : 'bg-red-100'}`}>
-                      <Bell className={`h-5 w-5 ${alert.resolved ? 'text-gray-500' : 'text-red-500'}`} />
+                  <div key={`${alert.alert_type}-${alert.status === 'dismissed'}`} className="flex items-center gap-4 p-3 rounded-lg border">
+                    <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-100' : 'bg-red-100'}`}>
+                      <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-red-500'}`} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -291,14 +291,14 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                             +{group.count - 1} more
                           </Badge>
                         )}
-                        {alert.resolved && (
+                        {alert.status === 'dismissed' && (
                           <Badge variant="outline" className="ml-auto">
                             Resolved
                           </Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Threshold: {alert.threshold_value} | Actual: {alert.actual_value}
+                        Threshold: {alert.threshold_value} | Actual: {alert.measured_value}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
@@ -329,7 +329,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
               <AlertTriangle className="h-5 w-5" />
               <span>All Alerts for {painting.name}</span>
               <Badge variant="destructive" className="ml-2">
-                {alerts.filter(a => !a.resolved).length} active
+                {alerts.filter(a => a.status === 'active').length} active
               </Badge>
             </DialogTitle>
             <DialogDescription>
@@ -375,8 +375,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
             {alerts
               .filter(alert => {
                 if (alertFilter === "all") return true;
-                if (alertFilter === "active") return !alert.resolved;
-                if (alertFilter === "resolved") return alert.resolved;
+                if (alertFilter === "active") return alert.status === 'active';
+                if (alertFilter === "resolved") return alert.status === 'dismissed';
                 return alert.alert_type === alertFilter;
               })
               .sort((a, b) => {
@@ -387,14 +387,14 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
                 }
                 // Severity - naive implementation based on how far the value exceeds the threshold
-                const aRatio = a.actual_value / a.threshold_value;
-                const bRatio = b.actual_value / b.threshold_value;
+                const aRatio = a.measured_value / a.threshold_value;
+                const bRatio = b.measured_value / b.threshold_value;
                 return bRatio - aRatio;
               })
               .map(alert => (
                 <div key={alert.id} className="flex items-start gap-4 p-4 rounded-lg border">
-                  <div className={`p-2 rounded-full ${alert.resolved ? 'bg-gray-100' : 'bg-red-100'}`}>
-                    <Bell className={`h-5 w-5 ${alert.resolved ? 'text-gray-500' : 'text-red-500'}`} />
+                  <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-100' : 'bg-red-100'}`}>
+                    <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-red-500'}`} />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
@@ -408,7 +408,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
                         </Badge>
                       </div>
-                      {alert.resolved && (
+                      {alert.status === 'dismissed' && (
                         <Badge variant="outline">
                           Resolved
                         </Badge>
@@ -416,15 +416,15 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     </div>
                     <div className="flex justify-between mt-2">
                       <p className="text-sm text-muted-foreground">
-                        Threshold: {alert.threshold_value} | Actual: <span className={alert.resolved ? "" : "text-red-600 font-medium"}>{alert.actual_value}</span>
+                        Threshold: {alert.threshold_value} | Actual: <span className={alert.status === 'dismissed' ? "" : "text-red-600 font-medium"}>{alert.measured_value}</span>
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     </div>
-                    {alert.resolved && alert.resolved_at && (
+                    {alert.status === 'dismissed' && alert.dismissed_at && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Resolved at: {format(new Date(alert.resolved_at), 'MMM dd, yyyy HH:mm:ss')}
+                        Resolved at: {format(new Date(alert.dismissed_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     )}
                   </div>
@@ -477,7 +477,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["Temperature"]}
                       index="time"
                       colors={["orange"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(1)}°C`}
                       className="h-full w-full"
                     />
                   </div>
@@ -500,7 +500,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["Humidity"]}
                       index="time"
                       colors={["blue"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(1)}%`}
                       className="h-full w-full"
                     />
                   </div>
@@ -523,7 +523,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["CO2"]}
                       index="time"
                       colors={["green"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(1)} ppm`}
                       className="h-full w-full"
                     />
                   </div>
@@ -546,7 +546,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["Illumination"]}
                       index="time"
                       colors={["yellow"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(1)} lux`}
                       className="h-full w-full"
                     />
                   </div>
@@ -569,7 +569,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["Air Pressure"]}
                       index="time"
                       colors={["purple"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(1)} hPa`}
                       className="h-full w-full"
                     />
                   </div>
@@ -592,7 +592,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       categories={["Mold Risk"]}
                       index="time"
                       colors={["brown"]}
-                      valueFormatter={valueFormatter}
+                      valueFormatter={(value) => `${value.toFixed(0)}`}
                       className="h-full w-full"
                     />
                   </div>
