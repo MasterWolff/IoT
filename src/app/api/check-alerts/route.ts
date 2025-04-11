@@ -3,6 +3,7 @@ import { checkAlertsAndNotify } from '@/lib/api';
 import { isEmailConfigured } from '@/lib/emailConfig';
 import { supabase } from '@/lib/supabase';
 import { sendAlertEmail } from '@/lib/email';
+import { emailConfig } from '@/lib/emailConfig';
 
 // Define types for our alerts
 interface Alert {
@@ -58,11 +59,28 @@ export async function GET(request: NextRequest) {
   
   // Check if email is configured
   if (!isEmailConfigured()) {
+    console.error('Email notification system is not properly configured. Missing required values:', {
+      host: !!emailConfig.smtp.host,
+      port: !!emailConfig.smtp.port,
+      user: !!emailConfig.smtp.auth.user,
+      pass: !!emailConfig.smtp.auth.pass,
+      from: !!emailConfig.from,
+      recipients: emailConfig.alertRecipients.length > 0
+    });
     return NextResponse.json(
       { error: 'Email notification system is not properly configured.' },
       { status: 500 }
     );
   }
+  
+  // Log email config (without sensitive data)
+  console.log('Email configuration:', {
+    host: emailConfig.smtp.host,
+    port: emailConfig.smtp.port,
+    from: emailConfig.from,
+    recipients: emailConfig.alertRecipients,
+    secure: emailConfig.smtp.secure
+  });
   
   try {
     // Use the alerts endpoint to get any active alerts
@@ -105,8 +123,9 @@ export async function GET(request: NextRequest) {
         
         // Send the alert email
         try {
+          console.log(`Attempting to send email alert for ${painting.name} to ${emailConfig.alertRecipients.join(',')}`);
           await sendAlertEmail({
-            to: 'museum.admin@example.com', // Replace with actual email
+            to: emailConfig.alertRecipients.join(','), // Use configured recipients
             subject: `Environmental Alert for ${painting.name}`,
             text: `The following environmental alerts have been detected for ${painting.name} by ${painting.artist}:\n\n${alertsText}`,
             html: `
@@ -199,8 +218,9 @@ export async function POST(request: NextRequest) {
           
           // Send the alert email
           try {
+            console.log(`Attempting to send email alert for ${painting.name} to ${emailConfig.alertRecipients.join(',')}`);
             await sendAlertEmail({
-              to: 'museum.admin@example.com', // Replace with actual email
+              to: emailConfig.alertRecipients.join(','), // Use configured recipients
               subject: `Environmental Alert for ${painting.name}`,
               text: `The following environmental alerts have been detected for ${painting.name} by ${painting.artist}:\n\n${alertsText}`,
               html: `

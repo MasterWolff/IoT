@@ -16,6 +16,12 @@ export async function sendAlertEmail(options: EmailOptions): Promise<boolean> {
       return false;
     }
     
+    console.log('Creating email transporter with config:', {
+      host: emailConfig.smtp.host,
+      port: emailConfig.smtp.port,
+      secure: emailConfig.smtp.secure
+    });
+    
     // Create transporter
     const transporter = nodemailer.createTransport({
       host: emailConfig.smtp.host,
@@ -25,7 +31,23 @@ export async function sendAlertEmail(options: EmailOptions): Promise<boolean> {
         user: emailConfig.smtp.auth.user,
         pass: emailConfig.smtp.auth.pass,
       },
+      tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
+      }
     });
+    
+    // Verify connection configuration
+    try {
+      console.log('Verifying email connection...');
+      await transporter.verify();
+      console.log('Email connection verified successfully');
+    } catch (verifyError) {
+      console.error('Email connection verification failed:', verifyError);
+      throw verifyError;
+    }
+    
+    console.log(`Sending email to ${options.to} with subject: ${options.subject}`);
     
     // Send email
     const result = await transporter.sendMail({
@@ -36,10 +58,16 @@ export async function sendAlertEmail(options: EmailOptions): Promise<boolean> {
       html: options.html,
     });
     
-    console.log('Email sent:', result.messageId);
+    console.log('Email sent successfully:', result.messageId);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', error.message);
+      if ('code' in error) {
+        console.error('Error code:', (error as any).code);
+      }
+    }
     return false;
   }
 } 
