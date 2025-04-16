@@ -15,10 +15,10 @@ import {
   PlusCircle, 
   Settings, 
   RefreshCw, 
-  TabletSmartphone, 
-  CircleCheckIcon, 
-  CircleXIcon,
-  CircleAlertIcon
+  TabletSmartphone,
+  CheckCircle2,
+  XCircle,
+  AlertCircle
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDevices } from "@/lib/clientApi";
@@ -101,13 +101,13 @@ export default function DevicesPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'online':
-        return <CircleCheckIcon className="h-4 w-4 text-green-500" />;
+        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case 'offline':
-        return <CircleXIcon className="h-4 w-4 text-red-500" />;
+        return <XCircle className="h-4 w-4 text-red-500" />;
       case 'maintenance':
-        return <CircleAlertIcon className="h-4 w-4 text-amber-500" />;
+        return <AlertCircle className="h-4 w-4 text-amber-500" />;
       default:
-        return <CircleXIcon className="h-4 w-4 text-red-500" />;
+        return <XCircle className="h-4 w-4 text-red-500" />;
     }
   };
 

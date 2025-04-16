@@ -4,6 +4,12 @@ import "./globals.css";
 import { Providers } from "./providers";
 import Link from "next/link";
 import AutoFetchInit from "@/components/AutoFetchInit";
+import dynamic from 'next/dynamic';
+
+// Import ErrorBoundary with no SSR to avoid hydration issues
+const ErrorBoundary = dynamic(() => import('@/components/ErrorBoundary'), { 
+  ssr: false 
+});
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,16 +24,52 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
-      <body className={`${inter.className} h-full bg-slate-50`}>
+    <html lang="en" style={{ height: '100%' }}>
+      <head>
+        {/* Base styles in case CSS fails to load */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-family: sans-serif;
+          }
+          .header { 
+            border-bottom: 1px solid #e2e8f0; 
+            background-color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+          }
+          .link-item {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-right: 1.5rem;
+            color: #475569;
+          }
+          .link-item:hover {
+            color: #2563eb;
+          }
+          .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            padding: 1rem;
+            margin-bottom: 1rem;
+          }
+        `}} />
+      </head>
+      <body className={inter.className} style={{ height: '100%', backgroundColor: '#f8fafc', margin: 0, padding: 0 }}>
         <Providers>
           {/* Initialize auto-fetch service */}
           <AutoFetchInit />
-          <div className="flex min-h-screen flex-col">
-            <header className="border-b bg-white sticky top-0 z-10 shadow-sm">
-              <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 flex items-center justify-between py-4">
-                <Link href="/" className="flex items-center space-x-2">
-                  <div className="bg-blue-600 text-white p-2 rounded-md">
+          <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+            <header className="header" style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)' }}>
+              <div style={{ maxWidth: '80rem', margin: '0 auto', width: '100%', padding: '0 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '1rem', paddingBottom: '1rem' }}>
+                <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none', color: 'inherit' }}>
+                  <div style={{ backgroundColor: '#2563eb', color: 'white', padding: '0.5rem', borderRadius: '0.375rem' }}>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 24 24"
@@ -36,7 +78,7 @@ export default function RootLayout({
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="h-5 w-5"
+                      style={{ height: '1.25rem', width: '1.25rem' }}
                     >
                       <path d="M2 12h5" />
                       <path d="M17 12h5" />
@@ -48,55 +90,63 @@ export default function RootLayout({
                       <path d="M4.93 15.54l3.54-3.54" />
                     </svg>
                   </div>
-                  <span className="text-xl font-bold">Museum IoT</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>Museum IoT</span>
                 </Link>
-                <nav className="flex items-center space-x-6">
+                <nav style={{ display: 'flex', alignItems: 'center' }}>
                   <Link 
                     href="/" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Dashboard
                   </Link>
                   <Link 
                     href="/paintings" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Paintings
                   </Link>
                   <Link 
                     href="/devices" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Devices
                   </Link>
                   <Link 
                     href="/materials" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Materials
                   </Link>
                   <Link 
                     href="/auto-fetch" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Auto Fetch
                   </Link>
                   <Link 
                     href="/data-tables" 
-                    className="text-sm font-medium hover:text-blue-600 transition-colors"
+                    className="link-item"
+                    style={{ fontSize: '0.875rem', fontWeight: '500', marginRight: '1.5rem', color: '#475569', textDecoration: 'none' }}
                   >
                     Data Tables
                   </Link>
                 </nav>
               </div>
             </header>
-            <main className="flex-1 py-8">
-              <div className="max-w-7xl mx-auto w-full px-4 sm:px-6">
-                {children}
+            <main style={{ flex: '1', paddingTop: '2rem', paddingBottom: '2rem' }}>
+              <div style={{ maxWidth: '80rem', margin: '0 auto', width: '100%', padding: '0 1rem' }}>
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
               </div>
             </main>
-            <footer className="border-t bg-white py-6">
-              <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 text-center text-sm text-slate-500">
+            <footer style={{ borderTop: '1px solid #e2e8f0', backgroundColor: 'white', padding: '1.5rem 0' }}>
+              <div style={{ maxWidth: '80rem', margin: '0 auto', width: '100%', padding: '0 1rem', textAlign: 'center', fontSize: '0.875rem', color: '#64748b' }}>
                 © {new Date().getFullYear()} Museum IoT Monitoring System
               </div>
             </footer>
