@@ -2,17 +2,9 @@
 module.exports = {
   darkMode: ["class"],
   content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-  ],
-  safelist: [
-    // Add critical classes that should never be purged
-    {
-      pattern: /^(bg|text|border|shadow|rounded|p|m|flex|grid|gap|space|justify|items|w|h)-/,
-      variants: ['hover', 'focus', 'sm', 'md', 'lg', 'xl', '2xl'],
-    },
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     container: {
