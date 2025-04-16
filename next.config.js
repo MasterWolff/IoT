@@ -8,13 +8,6 @@ const nextConfig = {
   },
   // Ensure CSS is properly handled
   swcMinify: false, // Disable minification to prevent CSS issues
-  // Set to export static HTML
-  output: 'export',
-  // Disable image optimization for static export
-  images: {
-    unoptimized: true,
-  },
-  trailingSlash: true,
 }
 
 module.exports = nextConfig; 
