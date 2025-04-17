@@ -19,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} h-full bg-background m-0 p-0`}>
+      <body className={`${inter.className} h-full bg-background m-0 p-0 overflow-x-hidden`}>
         <Providers>
           <ClientLayout>
             {children}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -18,7 +18,11 @@ import {
   TabletSmartphone,
   CheckCircle2,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  CalendarClock,
+  Frame,
+  RotateCw
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDevices } from "@/lib/clientApi";
@@ -97,6 +101,23 @@ export default function DevicesPage() {
     }).format(date);
   };
 
+  // Helper function to format relative time
+  const formatRelativeTime = (dateString: string | null) => {
+    if (!dateString) return "Never";
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hr ago`;
+    return `${diffDays} days ago`;
+  };
+
   // Get status icon based on status
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -149,70 +170,159 @@ export default function DevicesPage() {
           {loading ? (
             <div className="py-8 text-center">Loading devices data...</div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead className="w-[15%]">Device ID</TableHead>
-                    <TableHead className="w-[25%]">Associated Painting</TableHead>
-                    <TableHead>Last Calibration</TableHead>
-                    <TableHead>Last Measurement</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {devices.length === 0 ? (
+            <>
+              {/* Mobile Card View - shown below lg breakpoint */}
+              <div className="lg:hidden space-y-4">
+                {devices.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    No devices found in the database.
+                  </div>
+                ) : (
+                  devices.map((device) => (
+                    <Card key={device.id} className="overflow-hidden">
+                      <CardContent className="p-0">
+                        <div className="p-4 flex flex-col">
+                          <div className="flex justify-between items-start">
+                            <div className="font-semibold text-base">
+                              {device.arduino_device_id || device.id.substring(0, 8)}
+                            </div>
+                            <div className="flex items-center">
+                              {getStatusIcon(device.status || 'offline')}
+                              <Badge 
+                                variant={getStatusBadgeVariant(device.status || 'offline') as any}
+                                className="ml-1.5"
+                              >
+                                {device.status ? device.status.charAt(0).toUpperCase() + device.status.slice(1) : 'Offline'}
+                              </Badge>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 space-y-2">
+                            {/* Painting Information */}
+                            <div className="flex items-center text-sm">
+                              <Frame className="h-3.5 w-3.5 mr-1.5 text-slate-400 flex-shrink-0" />
+                              <div className="text-slate-600">
+                                {device.paintings?.name ? (
+                                  <span>
+                                    Assigned to <span className="font-medium">{device.paintings.name}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">Not assigned to any painting</span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Last Measurement */}
+                            <div className="flex items-center text-sm">
+                              <Clock className="h-3.5 w-3.5 mr-1.5 text-slate-400 flex-shrink-0" />
+                              <div className="text-slate-600">
+                                {device.last_measurement ? (
+                                  <span>
+                                    Last data <span className="font-medium">{formatRelativeTime(device.last_measurement)}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">No measurement data</span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Last Calibration */}
+                            <div className="flex items-center text-sm">
+                              <CalendarClock className="h-3.5 w-3.5 mr-1.5 text-slate-400 flex-shrink-0" />
+                              <div className="text-slate-600">
+                                {device.last_calibration_date ? (
+                                  <span>
+                                    Calibrated <span className="font-medium">{formatRelativeTime(device.last_calibration_date)}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">Not calibrated</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                      <CardFooter className="flex justify-between p-3 bg-slate-50 border-t gap-2">
+                        <Button variant="outline" size="sm" className="flex-1 flex items-center justify-center">
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                          Calibrate
+                        </Button>
+                        <Button variant="outline" size="sm" className="flex-1 flex items-center justify-center">
+                          <Settings className="h-3.5 w-3.5 mr-1" />
+                          Config
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))
+                )}
+              </div>
+              
+              {/* Desktop Table View - hidden below lg breakpoint */}
+              <div className="hidden lg:block rounded-md border">
+                <Table>
+                  <TableHeader className="bg-muted/50">
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
-                        No devices found in the database.
-                      </TableCell>
+                      <TableHead className="w-[15%]">Device ID</TableHead>
+                      <TableHead className="w-[25%]">Associated Painting</TableHead>
+                      <TableHead>Last Calibration</TableHead>
+                      <TableHead>Last Measurement</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ) : (
-                    devices.map((device) => (
-                      <TableRow key={device.id} className="hover:bg-muted/30">
-                        <TableCell className="font-medium">
-                          {device.arduino_device_id || device.id.substring(0, 8)}
-                        </TableCell>
-                        <TableCell>
-                          {device.paintings?.name || "Not assigned"}
-                        </TableCell>
-                        <TableCell>
-                          {device.last_calibration_date 
-                            ? formatDate(device.last_calibration_date) 
-                            : "Not calibrated"}
-                        </TableCell>
-                        <TableCell>
-                          {device.last_measurement 
-                            ? formatDate(device.last_measurement) 
-                            : "No data yet"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {getStatusIcon(device.status || 'offline')}
-                            <Badge variant={getStatusBadgeVariant(device.status || 'offline') as any}>
-                              {device.status ? device.status.charAt(0).toUpperCase() + device.status.slice(1) : 'Offline'}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex gap-2 justify-end">
-                            <Button variant="outline" size="sm" className="flex items-center">
-                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                              Calibrate
-                            </Button>
-                            <Button variant="outline" size="sm" className="flex items-center">
-                              <Settings className="h-3.5 w-3.5 mr-1" />
-                              Config
-                            </Button>
-                          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {devices.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8">
+                          No devices found in the database.
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                    ) : (
+                      devices.map((device) => (
+                        <TableRow key={device.id} className="hover:bg-muted/30">
+                          <TableCell className="font-medium">
+                            {device.arduino_device_id || device.id.substring(0, 8)}
+                          </TableCell>
+                          <TableCell>
+                            {device.paintings?.name || "Not assigned"}
+                          </TableCell>
+                          <TableCell>
+                            {device.last_calibration_date 
+                              ? formatDate(device.last_calibration_date) 
+                              : "Not calibrated"}
+                          </TableCell>
+                          <TableCell>
+                            {device.last_measurement 
+                              ? formatDate(device.last_measurement) 
+                              : "No data yet"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {getStatusIcon(device.status || 'offline')}
+                              <Badge variant={getStatusBadgeVariant(device.status || 'offline') as any}>
+                                {device.status ? device.status.charAt(0).toUpperCase() + device.status.slice(1) : 'Offline'}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-2 justify-end">
+                              <Button variant="outline" size="sm" className="flex items-center">
+                                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                                Calibrate
+                              </Button>
+                              <Button variant="outline" size="sm" className="flex items-center">
+                                <Settings className="h-3.5 w-3.5 mr-1" />
+                                Config
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

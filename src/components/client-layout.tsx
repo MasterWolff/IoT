@@ -37,21 +37,13 @@ export default function ClientLayout({
     <>
       {/* Initialize auto-fetch service */}
       <AutoFetchInit />
-      <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4">
+      <div className="min-h-screen flex flex-col">
+        {/* Desktop header - hidden on mobile */}
+        <div className="w-full bg-white border-b border-gray-200 shadow-sm print:hidden hidden md:block">
+          <div className="container mx-auto flex items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2 text-inherit no-underline">
               <div className="rounded bg-blue-600 p-2 text-white">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-5 w-5"
-                >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
                   <path d="M2 12h5" />
                   <path d="M17 12h5" />
                   <path d="M12 2v5" />
@@ -65,38 +57,24 @@ export default function ClientLayout({
               <span className="text-xl font-bold">Museum IoT</span>
             </Link>
             
-            {/* Desktop Navigation - hidden on small screens */}
-            <nav className="hidden md:flex items-center">
-              <Link 
-                href="/" 
-                className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5"
-              >
+            <div className="flex items-center force-visible">
+              <Link href="/" className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5">
                 <LayoutDashboard className="h-4 w-4" />
                 <span>Dashboard</span>
               </Link>
-              <Link 
-                href="/paintings" 
-                className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5"
-              >
+              <Link href="/paintings" className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5">
                 <Frame className="h-4 w-4" />
                 <span>Paintings</span>
               </Link>
-              <Link 
-                href="/devices" 
-                className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5"
-              >
+              <Link href="/devices" className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5">
                 <Cpu className="h-4 w-4" />
                 <span>Devices</span>
               </Link>
-              <Link 
-                href="/materials" 
-                className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5"
-              >
+              <Link href="/materials" className="mr-6 text-sm font-medium text-gray-600 hover:text-blue-600 no-underline flex items-center gap-1.5">
                 <Layers className="h-4 w-4" />
                 <span>Materials</span>
               </Link>
               
-              {/* Settings Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600">
                   <Settings className="h-4 w-4" />
@@ -117,12 +95,34 @@ export default function ClientLayout({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </nav>
+            </div>
           </div>
-        </header>
-        
-        <main className="flex-1 py-8 md:py-8 pb-20 md:pb-8">
-          <div className="mx-auto w-full max-w-7xl px-4">
+        </div>
+
+        {/* Mobile header - only show logo */}
+        <div className="w-full bg-white border-b border-gray-200 shadow-sm print:hidden md:hidden">
+          <div className="px-4 py-3">
+            <Link href="/" className="flex items-center gap-2 text-inherit no-underline">
+              <div className="rounded bg-blue-600 p-2 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                  <path d="M2 12h5" />
+                  <path d="M17 12h5" />
+                  <path d="M12 2v5" />
+                  <path d="M12 17v5" />
+                  <path d="M4.93 4.93l3.54 3.54" />
+                  <path d="M15.54 15.54l3.54 3.54" />
+                  <path d="M15.54 4.93l-3.54 3.54" />
+                  <path d="M4.93 15.54l3.54-3.54" />
+                </svg>
+              </div>
+              <span className="text-xl font-bold">Museum IoT</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <main className="flex-1 py-6 pb-20 md:pb-6">
+          <div className="container mx-auto px-4">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

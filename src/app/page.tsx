@@ -123,7 +123,7 @@ const formatRelativeTime = (date: Date) => {
   return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 };
 
-export default function Home() {
+export default function DashboardPage() {
   const [paintings, setPaintings] = useState<Painting[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -381,8 +381,8 @@ export default function Home() {
   const deduplicatedAlerts = getDeduplicatedAlerts(alerts);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Add the DashboardRefresher to listen for data updates */}
+    <div className="space-y-8">
+      {/* DashboardRefresher for data updates */}
       <DashboardRefresher onDataUpdate={handleDataUpdate} />
       
       <div className="flex items-center justify-between">
@@ -409,7 +409,7 @@ export default function Home() {
         </Alert>
       )}
       
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-sm border-l-2 border-l-blue-400">
           <CardHeader className="pb-2 pt-4">
             <div className="flex items-center justify-between">
@@ -470,7 +470,7 @@ export default function Home() {
             <p className="text-xs text-muted-foreground mt-1">Total measurements</p>
           </CardContent>
         </Card>
-      </section>
+      </div>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between mb-2">
