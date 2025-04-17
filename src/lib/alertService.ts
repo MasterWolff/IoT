@@ -163,10 +163,20 @@ export async function storeAlertRecord(alertData: Partial<AlertRecord>): Promise
       return null;
     }
     
-    // If a similar active alert exists, don't create a new one
+    // If a similar active alert exists, check when it was created
     if (existingAlerts && existingAlerts.length > 0) {
-      console.log(`Similar active alert already exists for ${alertData.alert_type} ${alertData.threshold_exceeded}. Skipping.`);
-      return existingAlerts[0] as AlertRecord;
+      const existingAlert = existingAlerts[0];
+      const existingAlertDate = new Date(existingAlert.created_at);
+      const currentDate = new Date();
+      const hoursSinceLastAlert = (currentDate.getTime() - existingAlertDate.getTime()) / (1000 * 60 * 60);
+      
+      // If the alert is less than 24 hours old, skip creating a new one
+      if (hoursSinceLastAlert < 24) {
+        console.log(`Similar active alert already exists for ${alertData.alert_type} ${alertData.threshold_exceeded} from ${hoursSinceLastAlert.toFixed(1)} hours ago. Skipping.`);
+        return existingAlert as AlertRecord;
+      }
+      
+      console.log(`Similar active alert exists but was created ${hoursSinceLastAlert.toFixed(1)} hours ago (>24 hours). Creating a new alert.`);
     }
     
     // Format the alert for insertion - explicitly generate a UUID
