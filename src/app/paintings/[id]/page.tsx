@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { format } from 'date-fns';
+import { format, startOfDay, subDays, isAfter } from 'date-fns';
 import { getPaintingById } from '@/lib/clientApi';
 import { Painting, EnvironmentalData } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { LineChart } from "../../../components/ui/line-chart";
-import { AlertTriangle, Bell, X, Filter, SortDesc } from "lucide-react";
+import { AlertTriangle, Bell, X, Filter, SortDesc, Info, Calendar, User, Thermometer, Droplets, Wind, Bug } from "lucide-react";
 import { 
   Dialog, 
   DialogContent, 
@@ -78,6 +78,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   const [dialogOpen, setDialogOpen] = useState(false);
   const [alertFilter, setAlertFilter] = useState<string>("all");
   const [alertSort, setAlertSort] = useState<string>("latest");
+  const [dateFilter, setDateFilter] = useState<string>("all");
 
   useEffect(() => {
     async function fetchPaintingDetails() {
@@ -132,15 +133,21 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   }, [paintingId]);
 
   if (loading) {
-    return <div className="p-8">Loading painting details...</div>;
+    return <div className="p-8 flex items-center justify-center h-screen">
+      <div className="animate-pulse text-xl">Loading painting details...</div>
+    </div>;
   }
 
   if (error || !painting) {
-    return <div className="p-8 text-red-500">Error: {error || 'Painting not found'}</div>;
+    return <div className="p-8 text-red-500 flex items-center justify-center h-screen">
+      <div className="text-xl">Error: {error || 'Painting not found'}</div>
+    </div>;
   }
 
+  // Create chart data correctly sorted by time (latest on right)
   const chartData = painting.environmental_data?.map(data => ({
     time: format(new Date(data.created_at), 'HH:mm:ss'),
+    rawTime: new Date(data.created_at),
     Temperature: Number(data.temperature) || 0,
     Humidity: Number(data.humidity) || 0,
     CO2: Number(data.co2concentration) || 0,
@@ -148,17 +155,33 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     'Mold Risk': Number(data.moldrisklevel) || 0,
     Illumination: Number(data.illuminance) || 0
   })).sort((a, b) => {
-    // Sort by time to ensure proper line chart display
-    return new Date(a.time).getTime() - new Date(b.time).getTime();
+    // Sort by time to ensure proper line chart display (oldest to newest)
+    return a.rawTime.getTime() - b.rawTime.getTime();
   }) || [];
+
+  // Apply date filter to chart data
+  const getFilteredChartData = () => {
+    if (dateFilter === "all") {
+      return chartData;
+    }
+    
+    const today = startOfDay(new Date());
+    const filterDate = dateFilter === "today" 
+      ? today 
+      : subDays(today, 7); // "week"
+    
+    return chartData.filter(data => isAfter(data.rawTime, filterDate));
+  };
+  
+  const filteredChartData = getFilteredChartData();
   
   const metrics = {
-    temperature: chartData.map(d => d.Temperature),
-    humidity: chartData.map(d => d.Humidity),
-    co2: chartData.map(d => d.CO2),
-    light: chartData.map(d => d.Illumination),
-    airpressure: chartData.map(d => d['Air Pressure']),
-    moldRisk: chartData.map(d => d['Mold Risk'])
+    temperature: filteredChartData.map(d => d.Temperature),
+    humidity: filteredChartData.map(d => d.Humidity),
+    co2: filteredChartData.map(d => d.CO2),
+    light: filteredChartData.map(d => d.Illumination),
+    airpressure: filteredChartData.map(d => d['Air Pressure']),
+    moldRisk: filteredChartData.map(d => d['Mold Risk'])
   };
 
   // Get color for alert type
@@ -204,24 +227,43 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   // Show only top 5 alert groups by default
   const displayedAlertGroups = showAllAlerts ? alertGroups : alertGroups.slice(0, 5);
 
-  return (
-    <div className="space-y-8 p-8">
-      {/* Painting Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{painting.name}</h1>
-          <p className="text-lg text-muted-foreground">by {painting.artist}</p>
-        </div>
-        <Badge variant="outline">
-          {painting.creation_date ? format(new Date(painting.creation_date), 'yyyy') : 'Date unknown'}
-        </Badge>
-      </div>
+  // Get current environmental metrics
+  const latestData = painting.environmental_data.length > 0 
+    ? painting.environmental_data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] 
+    : null;
+  
+  // Count active alerts by type
+  const alertCounts = alerts.reduce((acc, alert) => {
+    if (alert.status === 'active') {
+      acc[alert.alert_type] = (acc[alert.alert_type] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
-      {/* Painting Image and Core Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
+  // Get first and last timestamp for the time range display
+  const getTimeRangeDisplay = () => {
+    if (filteredChartData.length === 0) return '';
+    
+    // Format the first and last timestamps into a readable format with both time and date
+    const firstDatapoint = filteredChartData[0]?.rawTime;
+    const lastDatapoint = filteredChartData[filteredChartData.length - 1]?.rawTime;
+    
+    if (!firstDatapoint || !lastDatapoint) return '';
+    
+    const firstTime = format(firstDatapoint, 'HH:mm:ss');
+    const lastTime = format(lastDatapoint, 'HH:mm:ss');
+    
+    return `${firstTime} - ${lastTime}`;
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      {/* Hero Section */}
+      <div className="bg-white border rounded-xl shadow-sm p-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Image Column */}
+          <div className="lg:col-span-1">
+            <div className="aspect-square rounded-lg  overflow-hidden">
               {imageUrl ? (
                 <img 
                   src={imageUrl} 
@@ -232,114 +274,463 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 <span className="text-muted-foreground">No image available</span>
               )}
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Materials</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {painting.painting_materials.map((pm) => (
-                <div key={pm.material_id} className="flex items-start space-x-2">
-                  <Badge variant="secondary">{pm.materials.name}</Badge>
-                  {pm.materials.description && (
-                    <span className="text-sm text-muted-foreground">
-                      {pm.materials.description}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Alerts Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            <span>Alerts</span>
-            {alerts.length > 0 && (
-              <Badge variant="destructive" className="ml-2">
-                {alerts.filter(a => a.status === 'active').length} active
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {alerts.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              No alerts recorded for this painting
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {displayedAlertGroups.map((group) => {
-                const alert = group.latest;
-                if (!alert) return null;
-                
-                return (
-                  <div key={`${alert.alert_type}-${alert.status === 'dismissed'}`} className="flex items-center gap-4 p-3 rounded-lg border">
-                    <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-100' : 'bg-red-100'}`}>
-                      <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-red-500'}`} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">
-                          {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
-                        </span>
-                        <Badge className={getAlertTypeColor(alert.alert_type)}>
-                          {alert.alert_type === 'temperature' ? '°C' : 
-                           alert.alert_type === 'humidity' ? '%' : 
-                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
-                        </Badge>
-                        {group.count > 1 && (
-                          <Badge variant="secondary" className="ml-2">
-                            +{group.count - 1} more
-                          </Badge>
-                        )}
-                        {alert.status === 'dismissed' && (
-                          <Badge variant="outline" className="ml-auto">
-                            Resolved
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Threshold: {alert.threshold_value} | Actual: {alert.measured_value}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
-                      </p>
-                    </div>
+          </div>
+          
+          {/* Details Column */}
+          <div className="lg:col-span-2 flex flex-col justify-between">
+            <div>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h1 className="text-3xl font-bold text-slate-900">{painting.name}</h1>
+                  <div className="flex items-center mt-2">
+                    <User className="h-4 w-4 text-slate-500 mr-2" />
+                    <p className="text-lg text-slate-700">{painting.artist}</p>
                   </div>
-                );
-              })}
+                  <div className="flex items-center mt-2">
+                    <Calendar className="h-4 w-4 text-slate-500 mr-2" />
+                    <Badge variant="outline" className="text-sm">
+                      {painting.creation_date ? format(new Date(painting.creation_date), 'yyyy') : 'Date unknown'}
+                    </Badge>
+                  </div>
+                </div>
+                
+                {alerts.filter(a => a.status === 'active').length > 0 && (
+                  <Badge variant="outline" className="text-md border-amber-300 bg-amber-50 text-amber-700 flex items-center gap-1">
+                    <AlertTriangle className="h-4 w-4" />
+                    {alerts.filter(a => a.status === 'active').length} active alerts
+                  </Badge>
+                )}
+              </div>
               
-              <div className="flex justify-center mt-4">
-                <button
-                  onClick={() => setDialogOpen(true)}
-                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  View all alerts ({alerts.length})
-                </button>
+              {/* Materials Section */}
+              <div className="mt-6">
+                <h2 className="text-xl font-semibold text-slate-800 mb-3">Materials</h2>
+                <div className="flex flex-wrap gap-2">
+                  {painting.painting_materials.map((pm) => (
+                    <Badge key={pm.material_id} variant="outline" className="text-sm py-1 px-3 bg-gray-50">
+                      {pm.materials.name}
+                    </Badge>
+                  ))}
+                </div>
+                {painting.painting_materials.some(pm => pm.materials.description) && (
+                  <div className="mt-4 space-y-2">
+                    {painting.painting_materials
+                      .filter(pm => pm.materials.description)
+                      .map((pm) => (
+                        <div key={`desc-${pm.material_id}`} className="text-sm text-slate-600">
+                          <span className="font-medium">{pm.materials.name}:</span> {pm.materials.description}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            
+            {/* Environmental Snapshot */}
+            {latestData && (
+              <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="flex items-center">
+                    <Thermometer className="h-5 w-5 text-orange-600 mr-2 opacity-70" />
+                    <span className="text-sm font-medium text-slate-600">Temperature</span>
+                  </div>
+                  <div className="mt-1 flex items-center">
+                    <span className="text-2xl font-semibold text-slate-800">{latestData.temperature?.toFixed(1) || '—'}°C</span>
+                    {alertCounts['temperature'] > 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                        {alertCounts['temperature']} alert{alertCounts['temperature'] > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="flex items-center">
+                    <Droplets className="h-5 w-5 text-blue-600 mr-2 opacity-70" />
+                    <span className="text-sm font-medium text-slate-600">Humidity</span>
+                  </div>
+                  <div className="mt-1 flex items-center">
+                    <span className="text-2xl font-semibold text-slate-800">{latestData.humidity?.toFixed(1) || '—'}%</span>
+                    {alertCounts['humidity'] > 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                        {alertCounts['humidity']} alert{alertCounts['humidity'] > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="flex items-center">
+                    <Wind className="h-5 w-5 text-green-600 mr-2 opacity-70" />
+                    <span className="text-sm font-medium text-slate-600">CO₂</span>
+                  </div>
+                  <div className="mt-1 flex items-center">
+                    <span className="text-2xl font-semibold text-slate-800">{latestData.co2concentration?.toFixed(0) || '—'} ppm</span>
+                    {alertCounts['co2'] > 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                        {alertCounts['co2']} alert{alertCounts['co2'] > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="flex items-center">
+                    <Bug className="h-5 w-5 text-amber-600 mr-2 opacity-70" />
+                    <span className="text-sm font-medium text-slate-600">Mold Risk</span>
+                  </div>
+                  <div className="mt-1 flex items-center">
+                    <span className="text-2xl font-semibold text-slate-800">{latestData.moldrisklevel?.toFixed(1) || '—'}</span>
+                    {alertCounts['moldrisklevel'] > 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                        {alertCounts['moldrisklevel']} alert{alertCounts['moldrisklevel'] > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Main Content Tabs */}
+      <Tabs defaultValue="environment" className="mb-8">
+        <TabsList className="mb-4">
+          <TabsTrigger value="environment">Environment Data</TabsTrigger>
+          <TabsTrigger value="alerts">Alerts {alerts.filter(a => a.status === 'active').length > 0 && 
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">
+              {alerts.filter(a => a.status === 'active').length}
+            </span>}</TabsTrigger>
+        </TabsList>
+        
+        {/* Environment Data Tab */}
+        <TabsContent value="environment">
+          <Card className="border shadow-sm">
+            <CardHeader className="border-b bg-white pb-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-xl text-slate-800">Environmental Monitoring</CardTitle>
+                  <CardDescription className="mt-1">Historical environmental data for this artwork</CardDescription>
+                </div>
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  {filteredChartData.length > 0 && (
+                    <div className="text-sm font-medium text-slate-600">
+                      <span>{filteredChartData.length} measurements</span>
+                      <span className="ml-2">{getTimeRangeDisplay()}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-1">
+                    <Button 
+                      variant={dateFilter === "today" ? "default" : "outline"} 
+                      size="sm" 
+                      onClick={() => setDateFilter("today")}
+                      className={`text-xs h-7 px-3 ${dateFilter !== "today" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                    >
+                      Today
+                    </Button>
+                    <Button 
+                      variant={dateFilter === "week" ? "default" : "outline"} 
+                      size="sm" 
+                      onClick={() => setDateFilter("week")}
+                      className={`text-xs h-7 px-3 ${dateFilter !== "week" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                    >
+                      Past 7 days
+                    </Button>
+                    <Button 
+                      variant={dateFilter === "all" ? "default" : "outline"} 
+                      size="sm" 
+                      onClick={() => setDateFilter("all")}
+                      className={`text-xs h-7 px-3 ${dateFilter !== "all" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                    >
+                      All time
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="bg-white border-b py-3 px-4">
+                <Tabs defaultValue="temperature" className="space-y-4">
+                  <div className="overflow-x-auto pb-2 scrollbar-hide" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                    <style jsx global>{`
+                      .scrollbar-hide::-webkit-scrollbar {
+                        display: none;
+                      }
+                    `}</style>
+                    <TabsList className="bg-gray-50 p-1 rounded-full w-fit min-w-full">
+                      <TabsTrigger value="temperature" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
+                        <Thermometer className="h-4 w-4" />Temperature
+                      </TabsTrigger>
+                      <TabsTrigger value="humidity" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
+                        <Droplets className="h-4 w-4" />Humidity
+                      </TabsTrigger>
+                      <TabsTrigger value="co2" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
+                        <Wind className="h-4 w-4" />CO₂
+                      </TabsTrigger>
+                      <TabsTrigger value="light" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white">Light</TabsTrigger>
+                      <TabsTrigger value="airpressure" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white">Air Pressure</TabsTrigger>
+                      <TabsTrigger value="moldRisk" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
+                        <Bug className="h-4 w-4" />Mold Risk
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="temperature" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No temperature data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">Temperature Over Time</h3>
+                        <p className="text-sm text-slate-500">Measured in °C</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["Temperature"]}
+                            index="time"
+                            colors={["orange"]}
+                            valueFormatter={(value) => `${value.toFixed(1)}°C`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="humidity" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No humidity data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">Humidity Over Time</h3>
+                        <p className="text-sm text-slate-500">Measured in %</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["Humidity"]}
+                            index="time"
+                            colors={["blue"]}
+                            valueFormatter={(value) => `${value.toFixed(1)}%`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="co2" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No CO₂ data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">CO₂ Levels Over Time</h3>
+                        <p className="text-sm text-slate-500">Measured in ppm</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["CO2"]}
+                            index="time"
+                            colors={["green"]}
+                            valueFormatter={(value) => `${value.toFixed(0)} ppm`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="light" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No light data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">Light Levels Over Time</h3>
+                        <p className="text-sm text-slate-500">Measured in lux</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["Illumination"]}
+                            index="time"
+                            colors={["#FFC107"]}
+                            valueFormatter={(value) => `${value.toFixed(1)} lux`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="airpressure" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No air pressure data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">Air Pressure Over Time</h3>
+                        <p className="text-sm text-slate-500">Measured in hPa</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["Air Pressure"]}
+                            index="time"
+                            colors={["purple"]}
+                            valueFormatter={(value) => `${value.toFixed(1)} hPa`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="moldRisk" className="p-4 m-0">
+                    {filteredChartData.length === 0 ? (
+                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                        {chartData.length > 0 ? "No data for selected time period" : "No mold risk data available"}
+                      </div>
+                    ) : (
+                      <div className="w-full border-0 p-0 bg-white">
+                        <h3 className="text-lg font-medium text-slate-800">Mold Risk Level Over Time</h3>
+                        <p className="text-sm text-slate-500">Risk index</p>
+                        <div className="h-[400px] mt-4">
+                          <LineChart
+                            data={filteredChartData}
+                            categories={["Mold Risk"]}
+                            index="time"
+                            colors={["brown"]}
+                            valueFormatter={(value) => `${value.toFixed(1)}`}
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Alerts Tab */}
+        <TabsContent value="alerts">
+          <Card className="border shadow-sm">
+            <CardHeader className="border-b bg-white">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <CardTitle className="text-xl text-slate-800">Alert History</CardTitle>
+                {alerts.filter(a => a.status === 'active').length > 0 && (
+                  <Badge variant="outline" className="ml-2 border-amber-200 bg-amber-50 text-amber-700">
+                    {alerts.filter(a => a.status === 'active').length} active
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>Environmental condition alerts for this artwork</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              {alerts.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                    <Bell className="h-6 w-6 text-slate-400" />
+                  </div>
+                  <p>No alerts recorded for this painting</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {displayedAlertGroups.map((group) => {
+                    const alert = group.latest;
+                    if (!alert) return null;
+                    
+                    return (
+                      <div 
+                        key={`${alert.alert_type}-${alert.status === 'dismissed'}`} 
+                        className={`flex items-center gap-4 p-4 rounded-lg border ${
+                          alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
+                        }`}
+                      >
+                        <div className={`p-2.5 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                          <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-700">
+                                {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
+                              </span>
+                              <Badge variant="outline" className={`bg-opacity-10 border ${
+                                alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
+                                alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
+                                alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
+                                'border-yellow-200 bg-yellow-50 text-yellow-700'
+                              }`}>
+                                {alert.alert_type === 'temperature' ? '°C' : 
+                                alert.alert_type === 'humidity' ? '%' : 
+                                alert.alert_type === 'co2' ? 'ppm' : 'lux'}
+                              </Badge>
+                              {group.count > 1 && (
+                                <Badge variant="outline" className="ml-2 bg-gray-50 text-slate-600">
+                                  +{group.count - 1} more
+                                </Badge>
+                              )}
+                            </div>
+                            {alert.status === 'dismissed' && (
+                              <Badge variant="outline" className="ml-auto bg-gray-50 text-slate-500">
+                                Resolved
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-col sm:flex-row sm:justify-between">
+                            <p className="text-sm text-slate-600">
+                              Threshold: <span className="font-medium">{alert.threshold_value}</span> | 
+                              Actual: <span className={`font-medium ${alert.status === 'active' ? 'text-amber-700' : ''}`}>
+                                {alert.measured_value}
+                              </span>
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1 sm:mt-0">
+                              Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="flex justify-center mt-6">
+                    <Button
+                      onClick={() => setDialogOpen(true)}
+                      variant="outline"
+                      className="flex items-center gap-2 text-slate-600 bg-white hover:bg-gray-50"
+                    >
+                      <Info className="h-4 w-4" />
+                      View all alerts ({alerts.length})
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Alert Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
               <span>All Alerts for {painting.name}</span>
-              <Badge variant="destructive" className="ml-2">
-                {alerts.filter(a => a.status === 'active').length} active
-              </Badge>
+              {alerts.filter(a => a.status === 'active').length > 0 && (
+                <Badge variant="outline" className="ml-2 border-amber-200 bg-amber-50 text-amber-700">
+                  {alerts.filter(a => a.status === 'active').length} active
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription>
               History of all environmental alerts for this painting
@@ -348,9 +739,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
 
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Filter className="h-4 w-4 text-slate-500" />
               <Select value={alertFilter} onValueChange={setAlertFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[180px] border-slate-200">
                   <SelectValue placeholder="Filter by type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -366,9 +757,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
             </div>
             
             <div className="flex items-center gap-2">
-              <SortDesc className="h-4 w-4 text-muted-foreground" />
+              <SortDesc className="h-4 w-4 text-slate-500" />
               <Select value={alertSort} onValueChange={setAlertSort}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[180px] border-slate-200">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
@@ -401,38 +792,45 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 return bRatio - aRatio;
               })
               .map(alert => (
-                <div key={alert.id} className="flex items-start gap-4 p-4 rounded-lg border">
-                  <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-100' : 'bg-red-100'}`}>
-                    <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-red-500'}`} />
+                <div key={alert.id} className={`flex items-start gap-4 p-4 rounded-lg border ${
+                  alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
+                }`}>
+                  <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                    <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">
+                        <span className="font-medium text-slate-700">
                           {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
                         </span>
-                        <Badge className={getAlertTypeColor(alert.alert_type)}>
+                        <Badge variant="outline" className={`bg-opacity-10 border ${
+                          alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
+                          alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
+                          alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
+                          'border-yellow-200 bg-yellow-50 text-yellow-700'
+                        }`}>
                           {alert.alert_type === 'temperature' ? '°C' : 
                           alert.alert_type === 'humidity' ? '%' : 
                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
                         </Badge>
                       </div>
                       {alert.status === 'dismissed' && (
-                        <Badge variant="outline">
+                        <Badge variant="outline" className="ml-auto bg-gray-50 text-slate-500">
                           Resolved
                         </Badge>
                       )}
                     </div>
                     <div className="flex justify-between mt-2">
-                      <p className="text-sm text-muted-foreground">
-                        Threshold: {alert.threshold_value} | Actual: <span className={alert.status === 'dismissed' ? "" : "text-red-600 font-medium"}>{alert.measured_value}</span>
+                      <p className="text-sm text-slate-600">
+                        Threshold: {alert.threshold_value} | Actual: <span className={alert.status === 'active' ? "text-amber-700 font-medium" : ""}>{alert.measured_value}</span>
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-slate-500">
                         {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     </div>
                     {alert.status === 'dismissed' && alert.dismissed_at && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         Resolved at: {format(new Date(alert.dismissed_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     )}
@@ -442,175 +840,10 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Close</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-white text-slate-700 hover:bg-gray-50">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Environmental Data Charts */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Environmental Data</span>
-            {chartData.length > 0 && (
-              <div className="text-sm font-normal text-muted-foreground flex space-x-4">
-                <span>{chartData.length} measurements</span>
-                <span>{chartData[0]?.time} - {chartData[chartData.length - 1]?.time}</span>
-              </div>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="temperature" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="temperature">Temperature</TabsTrigger>
-              <TabsTrigger value="humidity">Humidity</TabsTrigger>
-              <TabsTrigger value="co2">CO2</TabsTrigger>
-              <TabsTrigger value="light">Light</TabsTrigger>
-              <TabsTrigger value="airpressure">Air Pressure</TabsTrigger>
-              <TabsTrigger value="moldRisk">Mold Risk</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="temperature" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No temperature data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">Temperature Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Measured in °C</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["Temperature"]}
-                      index="time"
-                      colors={["orange"]}
-                      valueFormatter={(value) => `${value.toFixed(1)}°C`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="humidity" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No humidity data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">Humidity Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Measured in %</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["Humidity"]}
-                      index="time"
-                      colors={["blue"]}
-                      valueFormatter={(value) => `${value.toFixed(1)}%`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="co2" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No CO2 data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">CO2 Levels Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Measured in ppm</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["CO2"]}
-                      index="time"
-                      colors={["green"]}
-                      valueFormatter={(value) => `${value.toFixed(1)} ppm`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="light" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No light data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">Light Levels Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Measured in lux</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["Illumination"]}
-                      index="time"
-                      colors={["yellow"]}
-                      valueFormatter={(value) => `${value.toFixed(1)} lux`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="airpressure" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No air pressure data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">Air Pressure Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Measured in hPa</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["Air Pressure"]}
-                      index="time"
-                      colors={["purple"]}
-                      valueFormatter={(value) => `${value.toFixed(1)} hPa`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="moldRisk" className="h-[400px]">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No mold risk data available
-                </div>
-              ) : (
-                <div className="w-full h-full border rounded-lg p-4">
-                  <h3 className="text-lg font-medium">Mold Risk Level Over Time</h3>
-                  <p className="text-sm text-muted-foreground">Risk index</p>
-                  <div className="h-[300px] mt-4">
-                    <LineChart
-                      data={chartData}
-                      categories={["Mold Risk"]}
-                      index="time"
-                      colors={["brown"]}
-                      valueFormatter={(value) => `${value.toFixed(0)}`}
-                      className="h-full w-full"
-                    />
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
     </div>
   );
 } 
