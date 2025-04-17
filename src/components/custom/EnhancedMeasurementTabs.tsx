@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import {
   Card,
   CardContent,
@@ -18,24 +18,21 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import DashboardRefresher from "@/components/DashboardRefresher";
 import { 
   ThermometerIcon, 
   DropletIcon, 
-  SunIcon, 
   Wind,
   AlertCircle,
   RefreshCw
 } from "lucide-react";
 import { format } from 'date-fns';
-import { Button } from './ui/button';
+import { Button } from '@/components/ui/button';
 
-// Import our unified alert service
-import { exceedsThresholds as checkThresholds } from '@/lib/alertService';
+// Import our unified alert service for threshold checking
+import { exceedsThresholds } from '@/lib/alertService';
 
-// Type definitions for the environmental data
-type EnvironmentalMeasurement = {
+// Type definition for environmental measurements
+export type EnvironmentalMeasurement = {
   id: string;
   device_id: string;
   painting_id: string;
@@ -69,121 +66,76 @@ type EnvironmentalMeasurement = {
   devices: {
     name: string;
     status: string;
-    // Other device fields if needed
   };
 };
 
-export function MeasurementTabs() {
-  const [measurements, setMeasurements] = useState<EnvironmentalMeasurement[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
+interface EnhancedMeasurementTabsProps {
+  measurements: EnvironmentalMeasurement[];
+  alerts: any[];
+  isLoading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}
 
-  const fetchEnvironmentalData = useCallback(async (options: {
-    showLoading?: boolean
-  } = { showLoading: false }) => {
-    try {
-      if (options.showLoading) {
-        setLoading(true);
-      }
-      setError(null);
-      
-      // Use the endpoint to fetch environmental data
-      const response = await fetch('/api/environmental-data');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch environmental data: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('Environmental data response:', data); // Debug log
-      
-      if (data.success && data.data && Array.isArray(data.data) && data.data.length > 0) {
-        // Data is available
-        setMeasurements(data.data);
-        console.log('First measurement:', data.data[0]); // Debug: Log first data point
-      } else {
-        console.warn('No environmental data found or empty array returned');
-        setError('No environmental data available. Please add some sensor readings first.');
-      }
-
-      // Also fetch alerts to use for status determination
-      const alertsResponse = await fetch('/api/alerts?status=active');
-      if (alertsResponse.ok) {
-        const alertsData = await alertsResponse.json();
-        if (alertsData.success && alertsData.alerts) {
-          setAlerts(alertsData.alerts);
-          console.log('Active alerts for measurement status:', alertsData.alerts.length);
-        }
-      }
-      
-      // Update last refresh time
-      setLastRefresh(new Date().toISOString());
-    } catch (err) {
-      console.error('Error fetching environmental data:', err);
-      setError('Failed to load measurement data. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  
-  useEffect(() => {
-    // Initial fetch with loading indicator
-    fetchEnvironmentalData({ showLoading: true });
-  }, [fetchEnvironmentalData]);
-
-  // Handler for data updates from the DashboardRefresher
-  const handleDataUpdate = useCallback(() => {
-    console.log('Data update received in measurement tabs');
-    // Refresh data without loading state
-    fetchEnvironmentalData({ showLoading: false });
-  }, [fetchEnvironmentalData]);
-  
-  // Handle manual refresh
-  const handleRefresh = () => {
-    fetchEnvironmentalData({ showLoading: true });
-  };
-
+export function EnhancedMeasurementTabs({ 
+  measurements, 
+  alerts, 
+  isLoading, 
+  error, 
+  onRefresh 
+}: EnhancedMeasurementTabsProps) {
   // Helper function to format timestamp
   const formatTime = (timestamp: string) => {
     try {
-      return format(new Date(timestamp), 'h:mm a');
+      const date = new Date(timestamp);
+      const today = new Date();
+      
+      // Check if the date is today
+      if (date.toDateString() === today.toDateString()) {
+        // For today's measurements, show only time
+        return format(date, 'h:mm a');
+      } else {
+        // For older measurements, show date and time
+        return format(date, 'MMM d, h:mm a');
+      }
     } catch (err) {
       return 'Unknown';
     }
   };
 
-  // Helper to check for active alerts
-  const checkForActiveAlert = (measurement: EnvironmentalMeasurement, type: string): boolean => {
-    // Check if there's an alert that matches this measurement's painting and environmental attribute
+  // Helper to check if a value exceeds thresholds
+  const checkThresholds = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance'): { exceeds: boolean, isUpper: boolean | null } => {
+    const value = measurement[type];
+    if (value === null) return { exceeds: false, isUpper: null };
+    
+    // Check if there's an active alert already for this measurement and type
     const matchingAlerts = alerts.filter(alert => 
       alert.painting_id === measurement.painting_id && 
       ((type === 'co2concentration' && alert.alert_type === 'co2') ||
        (type === 'moldrisklevel' && alert.alert_type === 'mold_risk_level') ||
-       alert.alert_type === type)
+       alert.alert_type === type) &&
+      alert.status === 'active'
     );
     
-    return matchingAlerts.length > 0;
-  };
-
-  // Helper to check if a value exceeds thresholds
-  const exceedsThresholds = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance'): boolean => {
-    const value = measurement[type];
-    if (value === null) return false;
-    
-    // Check if there's an active alert already
-    if (checkForActiveAlert(measurement, type)) {
-      return true;
+    if (matchingAlerts.length > 0) {
+      // If there's an existing alert, use its information
+      const isUpper = matchingAlerts[0].threshold_exceeded === 'upper';
+      return { exceeds: true, isUpper };
     }
     
-    // Use our unified alert service to check thresholds
-    const result = checkThresholds(measurement, type);
-    return result.exceeds;
+    // Otherwise, check thresholds directly using the alert service
+    const result = exceedsThresholds(measurement, type);
+    return { 
+      exceeds: result.exceeds, 
+      isUpper: result.threshold === 'upper' ? true : 
+               result.threshold === 'lower' ? false : null 
+    };
   };
 
-  // Update cell styling to use the threshold check
+  // Helper function for cell styling
   const getCellStyle = (measurement: EnvironmentalMeasurement, type: 'temperature' | 'humidity' | 'co2concentration' | 'airpressure' | 'moldrisklevel' | 'illuminance'): string => {
-    return exceedsThresholds(measurement, type) ? "font-medium text-amber-600" : "";
+    const { exceeds } = checkThresholds(measurement, type);
+    return exceeds ? "font-medium text-amber-600" : "";
   };
 
   // Helper function to determine status badge
@@ -191,12 +143,13 @@ export function MeasurementTabs() {
     const value = measurement[type];
     if (value === null) return <Badge variant="outline">No data</Badge>;
 
-    // Use the exceedsThresholds function for consistency
-    if (exceedsThresholds(measurement, type)) {
-      return <Badge variant="warning">Alert</Badge>;
+    const { exceeds, isUpper } = checkThresholds(measurement, type);
+    
+    if (exceeds) {
+      const direction = isUpper ? 'high' : 'low';
+      return <Badge variant="warning" className="font-medium">Alert ({direction})</Badge>;
     }
     
-    // If no threshold is exceeded, display as normal
     return <Badge variant="success">Normal</Badge>;
   };
 
@@ -225,27 +178,28 @@ export function MeasurementTabs() {
     .filter(m => m.moldrisklevel !== null)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
-    
-  const illuminationMeasurements = measurements
-    .filter(m => m.illuminance !== null)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 5);
 
   return (
     <section>
-      {/* Add the dashboard refresher */}
-      <DashboardRefresher onDataUpdate={handleDataUpdate} />
+      {/* Info banner about data source */}
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-2 mb-4 text-sm text-blue-700 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>
+          Displaying actual measurement timestamps from the database. Data is only updated when auto-fetch is enabled.
+        </span>
+      </div>
       
       <div className="flex justify-end items-center mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
-          </span>
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={handleRefresh}
-            disabled={loading}
+            onClick={onRefresh}
+            disabled={isLoading}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -281,7 +235,7 @@ export function MeasurementTabs() {
           </TabsTrigger>
         </TabsList>
         
-        {loading ? (
+        {isLoading ? (
           <Card className="p-4 sm:p-6 text-center text-muted-foreground">
             Loading measurement data...
           </Card>

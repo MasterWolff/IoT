@@ -6,6 +6,16 @@ import { supabase } from '@/lib/supabase';
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function GET(request: Request) {
+  // DISABLED: This cron job is no longer used - we rely only on manual auto-fetch
+  console.log('Cron job for fetching Arduino Cloud data is disabled. Using auto-fetch service instead.');
+  
+  return NextResponse.json({
+    success: true,
+    message: 'Cron job disabled - relying on auto-fetch service instead',
+    timestamp: new Date().toISOString()
+  });
+
+  /* Original code commented out
   // Verify the request is from our cron job
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get('secret');
@@ -138,4 +148,5 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
+  */
 } 

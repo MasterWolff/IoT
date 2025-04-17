@@ -8,8 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { MeasurementTabs } from "@/components/measurement-tabs";
-import DashboardRefresher from "@/components/DashboardRefresher";
+import { EnhancedMeasurementTabs, EnvironmentalMeasurement } from "@/components/custom/EnhancedMeasurementTabs";
 import { 
   DropletIcon, 
   ThermometerIcon, 
@@ -34,6 +33,7 @@ import {
 } from "lucide-react";
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { useAutoFetchStore } from '@/lib/autoFetchService';
 
 // Type definitions
 type Painting = {
@@ -62,6 +62,30 @@ type EnvironmentalData = {
   moldrisklevel: number | null;
   illuminance: number | null;
   created_at: string;
+  paintings: {
+    name: string;
+    artist: string;
+    painting_materials?: {
+      materials: {
+        threshold_temperature_lower: number | null;
+        threshold_temperature_upper: number | null;
+        threshold_humidity_lower: number | null;
+        threshold_humidity_upper: number | null;
+        threshold_co2concentration_lower: number | null;
+        threshold_co2concentration_upper: number | null;
+        threshold_moldrisklevel_lower: number | null;
+        threshold_moldrisklevel_upper: number | null;
+        threshold_airpressure_lower: number | null;
+        threshold_airpressure_upper: number | null;
+        threshold_illuminance_lower: number | null;
+        threshold_illuminance_upper: number | null;
+      };
+    }[];
+  };
+  devices: {
+    name: string;
+    status: string;
+  };
 };
 
 // Types for alerts related to specific environment types
@@ -131,6 +155,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<string>(new Date().toISOString());
+  const [recentlyDismissed, setRecentlyDismissed] = useState<string[]>([]);
+  
+  // Update the state type to EnvironmentalMeasurement
+  const [environmentalData, setEnvironmentalData] = useState<EnvironmentalMeasurement[]>([]);
+  const [envDataLoading, setEnvDataLoading] = useState<boolean>(true);
+  const [envDataError, setEnvDataError] = useState<string | null>(null);
 
   // Define the fetch function as a callback to prevent unnecessary re-renders
   const fetchDashboardData = useCallback(async (options: { 
@@ -138,10 +168,30 @@ export default function DashboardPage() {
     alerts?: boolean, 
     devices?: boolean,  
     paintings?: boolean, 
-    dataPoints?: boolean
+    dataPoints?: boolean,
+    environmentalData?: boolean
   } = { full: true }) => {
     try {
-      const { full, alerts: fetchAlerts, devices: fetchDevices, paintings: fetchPaintings, dataPoints: fetchDataPoints } = options;
+      const { 
+        full, 
+        alerts: fetchAlerts, 
+        devices: fetchDevices, 
+        paintings: fetchPaintings, 
+        dataPoints: fetchDataPoints,
+        environmentalData: fetchEnvironmentalData = false
+      } = options;
+      
+      console.log('🔍 DASHBOARD FETCH:', { 
+        timestamp: new Date().toISOString(),
+        options: {
+          full,
+          fetchAlerts,
+          fetchDevices,
+          fetchPaintings,
+          fetchDataPoints,
+          fetchEnvironmentalData
+        }
+      });
       
       // Only set loading state for full refreshes
       if (full) {
@@ -151,6 +201,7 @@ export default function DashboardPage() {
 
       // Fetch paintings if requested
       if (full || fetchPaintings) {
+        console.log('🖼️ Fetching paintings...');
         const paintingsResponse = await fetch('/api/paintings');
         const paintingsData = await paintingsResponse.json();
         if (!paintingsResponse.ok) throw new Error('Failed to fetch paintings');
@@ -159,6 +210,7 @@ export default function DashboardPage() {
 
       // Fetch devices if requested
       if (full || fetchDevices) {
+        console.log('⚙️ Fetching devices...');
         const devicesResponse = await fetch('/api/devices');
         const devicesData = await devicesResponse.json();
         if (!devicesResponse.ok) throw new Error('Failed to fetch devices');
@@ -167,23 +219,63 @@ export default function DashboardPage() {
 
       // Fetch alerts if requested (highest priority for updates)
       if (full || fetchAlerts) {
-        const alertsResponse = await fetch('/api/alerts?status=active&calculateNew=true');
+        // Never calculate new alerts in dashboard - just fetch existing ones
+        const alertsUrl = `/api/alerts?status=active`;
+        
+        console.log('🔔 Fetching alerts from:', alertsUrl);
+        const alertsResponse = await fetch(alertsUrl);
         const alertsData = await alertsResponse.json();
         if (!alertsResponse.ok) throw new Error('Failed to fetch alerts');
         setAlerts(alertsData.alerts || []);
         
         console.log(`Fetched ${alertsData.alerts?.length || 0} active alerts for dashboard`);
         if (alertsData.alerts?.length > 0) {
-          console.log('Active alerts:', alertsData.alerts.map((a: any) => `${a.alert_type}: ${a.measured_value}`));
+          console.log('Active alerts:', alertsData.alerts.map((a: any) => 
+            `${a.id}: ${a.alert_type}: ${a.measured_value} (status: ${a.status})`
+          ));
+          
+          // Log any alerts that are in both the active list and our recentlyDismissed list
+          // This would indicate a potential race condition
+          const conflictingAlerts = alertsData.alerts.filter((a: any) => 
+            recentlyDismissed.includes(a.id)
+          );
+          
+          if (conflictingAlerts.length > 0) {
+            console.warn('Warning: Found alerts that were recently dismissed but still active in database:', 
+              conflictingAlerts.map((a: any) => `${a.id}: ${a.alert_type}`)
+            );
+          }
         }
       }
       
-      // Fetch environmental data for data points count if requested
-      if (full || fetchDataPoints) {
+      // Fetch environmental data
+      if (full || fetchEnvironmentalData || fetchDataPoints) {
+        console.log('📊 Fetching environmental data...');
+        setEnvDataLoading(true);
+        
         const envDataResponse = await fetch('/api/environmental-data');
         const envData = await envDataResponse.json();
-        if (!envDataResponse.ok) throw new Error('Failed to fetch environmental data');
+        
+        if (!envDataResponse.ok) {
+          throw new Error('Failed to fetch environmental data');
+        }
+        
+        // Update count for stats
         setDataPoints(envData.count || 0);
+        
+        // Now also set the actual data if requested
+        if (full || fetchEnvironmentalData) {
+          if (envData.success && envData.data && Array.isArray(envData.data)) {
+            console.log(`Received ${envData.data.length} environmental data points`);
+            setEnvironmentalData(envData.data);
+            setEnvDataError(null);
+          } else {
+            console.warn('No environmental data found or empty array returned');
+            setEnvDataError('No environmental data available');
+          }
+        }
+        
+        setEnvDataLoading(false);
       }
       
       // Update last refresh time
@@ -191,41 +283,43 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError('Failed to load dashboard data. Please try again later.');
+      
+      if (options.environmentalData) {
+        setEnvDataError('Failed to load measurement data');
+        setEnvDataLoading(false);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [recentlyDismissed]);
 
-  // Set up initial data fetch
+  // Set up initial data fetch and polling
   useEffect(() => {
-    fetchDashboardData();
-    
-    // Set up polling for regular updates (every 30 seconds)
-    const intervalId = setInterval(() => {
-      fetchDashboardData({ 
-        full: false, 
-        alerts: true, // Always check for new alerts
-        devices: true, // Keep device status updated
-      });
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, [fetchDashboardData]);
-
-  // Handler for data updates from the DashboardRefresher
-  const handleDataUpdate = useCallback(() => {
-    console.log('Data update received in dashboard');
-    // Refresh the most important data (alerts and devices) without loading state
+    // Initial full fetch with environmental data
+    console.log('🚀 DASHBOARD: Initial data fetch');
     fetchDashboardData({ 
-      full: false, 
-      alerts: true,
-      devices: true
+      full: true,
+      environmentalData: true 
     });
+    
+    // No polling interval - manual refresh only
   }, [fetchDashboardData]);
 
   // Handle manual refresh
   const handleRefresh = () => {
-    fetchDashboardData();
+    fetchDashboardData({
+      full: true,
+      environmentalData: true
+    });
+  };
+  
+  // Handle environmental data refresh
+  const handleEnvDataRefresh = () => {
+    console.log('Manual refresh of environmental data');
+    fetchDashboardData({
+      full: false,
+      environmentalData: true
+    });
   };
 
   // Calculate active devices
@@ -299,9 +393,15 @@ export default function DashboardPage() {
 
   // Function to deduplicate alerts (show only one per painting & type)
   const getDeduplicatedAlerts = (alerts: Alert[]): Alert[] => {
+    // First, filter out any alerts that have been recently dismissed
+    // This prevents alerts from reappearing due to polling race conditions
+    const filteredAlerts = alerts.filter(
+      alert => alert.status === 'active' && !recentlyDismissed.includes(alert.id)
+    );
+    
     const uniqueAlertMap = new Map<string, Alert>();
     
-    alerts.forEach((alert) => {
+    filteredAlerts.forEach((alert) => {
       // Create a unique key based on painting ID and alert type
       const key = `${alert.painting_id}-${alert.alert_type}-${alert.threshold_exceeded}`;
       
@@ -345,6 +445,10 @@ export default function DashboardPage() {
   // Function to dismiss an alert
   const handleDismissAlert = useCallback(async (alertId: string) => {
     try {
+      // Save the alert ID in a "recently dismissed" array to prevent it from reappearing
+      // due to the polling interval (race condition)
+      setRecentlyDismissed(prev => [...prev, alertId]);
+      
       // Update the alert status in the database
       const response = await fetch('/api/alerts', {
         method: 'PATCH',
@@ -359,13 +463,28 @@ export default function DashboardPage() {
 
       if (!response.ok) {
         console.error('Failed to dismiss alert:', await response.text());
+        setRecentlyDismissed(prev => prev.filter(id => id !== alertId)); // Remove from recently dismissed if failed
         return;
       }
 
-      // Remove the alert from the UI
-      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId));
+      // Update the alert in the UI - instead of filtering it out, mark it as dismissed
+      setAlerts(prevAlerts => 
+        prevAlerts.map(alert => 
+          alert.id === alertId 
+            ? { ...alert, status: 'dismissed', dismissed_at: new Date().toISOString() } 
+            : alert
+        )
+      );
+      
+      console.log(`Successfully dismissed alert: ${alertId}`);
+      
+      // Remove the alert ID from the "recently dismissed" list after 2 minutes
+      setTimeout(() => {
+        setRecentlyDismissed(prev => prev.filter(id => id !== alertId));
+      }, 120000); // 2 minutes
     } catch (err) {
       console.error('Error dismissing alert:', err);
+      setRecentlyDismissed(prev => prev.filter(id => id !== alertId)); // Remove from recently dismissed if failed
     }
   }, []);
   
@@ -394,7 +513,7 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <div className="flex items-center gap-2 mt-2 sm:mt-0">
           <span className="text-sm text-muted-foreground">
-            Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
+            UI refreshed: {format(new Date(lastRefresh), 'HH:mm:ss')}
           </span>
           <button 
             onClick={handleRefresh}
@@ -518,26 +637,51 @@ export default function DashboardPage() {
                   className="text-left w-full"
                   onClick={() => showAlertDetails(alert)}
                 >
-                  <Alert variant="warning" className="shadow-sm border-l-2 border-l-amber-400 relative pr-10 cursor-pointer hover:bg-amber-50 py-2">
+                  <Alert 
+                    variant="warning" 
+                    className={`shadow-sm border-l-2 ${
+                      recentlyDismissed.includes(alert.id) 
+                        ? 'border-l-gray-300 opacity-60' 
+                        : 'border-l-amber-400'
+                    } relative pr-10 cursor-pointer hover:bg-amber-50 py-2`}
+                  >
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDismissAlert(alert.id);
                       }}
-                      className="absolute top-2 right-2 text-amber-500 hover:text-amber-700 transition-colors"
+                      className={`absolute top-2 right-2 ${
+                        recentlyDismissed.includes(alert.id) 
+                          ? 'text-gray-400 pointer-events-none' 
+                          : 'text-amber-500 hover:text-amber-700'
+                      } transition-colors`}
                       aria-label="Dismiss alert"
                       title="Dismiss alert"
+                      disabled={recentlyDismissed.includes(alert.id)}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="m15 9-6 6" />
-                        <path d="m9 9 6 6" />
-                      </svg>
+                      {recentlyDismissed.includes(alert.id) ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="16 12 12 8 8 12" />
+                          <polyline points="12 16 12 8" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="m15 9-6 6" />
+                          <path d="m9 9 6 6" />
+                        </svg>
+                      )}
                     </button>
                     <div className="flex items-center gap-2">
                       {alertInfo.icon}
                       <div>
-                        <AlertTitle className="font-semibold mb-0 truncate">{alertInfo.title}</AlertTitle>
+                        <div className="font-medium text-sm">
+                          {alertInfo.title}
+                          {recentlyDismissed.includes(alert.id) && (
+                            <span className="ml-2 text-gray-500 text-xs italic">(Dismissing...)</span>
+                          )}
+                        </div>
                         <AlertDescription className="mt-0">
                           <p className="text-sm truncate">{paintingName}</p>
                         </AlertDescription>
@@ -620,10 +764,16 @@ export default function DashboardPage() {
       
       <section>
         <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-xl font-bold tracking-tight">Recent Measurements</h2>
+          <h2 className="text-xl font-bold tracking-tight">Measurements</h2>
           <InfoIcon className="h-4 w-4 text-muted-foreground" />
         </div>
-        <MeasurementTabs />
+        <EnhancedMeasurementTabs 
+          measurements={environmentalData}
+          alerts={alerts}
+          isLoading={envDataLoading}
+          error={envDataError}
+          onRefresh={handleEnvDataRefresh}
+        />
       </section>
     </div>
   );
