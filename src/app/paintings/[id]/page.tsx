@@ -105,8 +105,10 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
             .from('painting-images')
             .getPublicUrl(fileName || '');
           
-          console.log('Generated public URL:', publicUrl.publicUrl);
-          setImageUrl(publicUrl.publicUrl);
+          // Clean the URL by removing any potential whitespace or newlines
+          const cleanUrl = publicUrl.publicUrl.replace(/\s|\n|\r/g, '');
+          console.log('Generated public URL:', cleanUrl);
+          setImageUrl(cleanUrl);
         }
 
         // Fetch alerts for this painting
