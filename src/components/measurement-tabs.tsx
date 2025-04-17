@@ -236,8 +236,7 @@ export function MeasurementTabs() {
       {/* Add the dashboard refresher */}
       <DashboardRefresher onDataUpdate={handleDataUpdate} />
       
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">Environmental Measurements</h2>
+      <div className="flex justify-end items-center mb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
             Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
@@ -255,39 +254,39 @@ export function MeasurementTabs() {
       </div>
       
       <Tabs defaultValue="temperature" className="w-full">
-        <TabsList className="mb-4 bg-background border rounded-lg h-14 p-1">
-          <TabsTrigger value="temperature" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+        <TabsList className="mb-4 bg-background border rounded-lg p-1 flex h-12 justify-between">
+          <TabsTrigger value="temperature" className="flex-1 px-1 md:px-3 py-2 text-sm md:text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center justify-center gap-2 rounded-md">
             <ThermometerIcon className="h-4 w-4" />
-            Temperature
+            <span className="hidden sm:inline">Temperature</span>
+            <span className="sm:hidden">Temp</span>
           </TabsTrigger>
-          <TabsTrigger value="humidity" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+          <TabsTrigger value="humidity" className="flex-1 px-1 md:px-3 py-2 text-sm md:text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center justify-center gap-2 rounded-md">
             <DropletIcon className="h-4 w-4" />
-            Humidity
+            <span className="hidden sm:inline">Humidity</span>
+            <span className="sm:hidden">Humid</span>
           </TabsTrigger>
-          <TabsTrigger value="co2" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+          <TabsTrigger value="co2" className="flex-1 px-1 md:px-3 py-2 text-sm md:text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center justify-center gap-2 rounded-md">
             <Wind className="h-4 w-4" />
-            CO2
+            <span>CO₂</span>
           </TabsTrigger>
-          <TabsTrigger value="airPressure" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+          <TabsTrigger value="airPressure" className="flex-1 px-1 md:px-3 py-2 text-sm md:text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center justify-center gap-2 rounded-md">
             <AlertCircle className="h-4 w-4" />
-            Air Pressure
+            <span className="hidden sm:inline">Air Pressure</span>
+            <span className="sm:hidden">Air</span>
           </TabsTrigger>
-          <TabsTrigger value="moldRisk" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
+          <TabsTrigger value="moldRisk" className="flex-1 px-1 md:px-3 py-2 text-sm md:text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center justify-center gap-2 rounded-md">
             <AlertCircle className="h-4 w-4" />
-            Mold Risk
-          </TabsTrigger>
-          <TabsTrigger value="illumination" className="px-6 py-3 text-base data-[state=active]:bg-muted data-[state=active]:text-foreground flex items-center gap-2 rounded-md">
-            <SunIcon className="h-4 w-4" />
-            Illumination
+            <span className="hidden sm:inline">Mold Risk</span>
+            <span className="sm:hidden">Mold</span>
           </TabsTrigger>
         </TabsList>
         
         {loading ? (
-          <Card className="p-6 text-center text-muted-foreground">
+          <Card className="p-4 sm:p-6 text-center text-muted-foreground">
             Loading measurement data...
           </Card>
         ) : error ? (
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="flex items-start gap-2">
               <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
               <div>
@@ -300,8 +299,8 @@ export function MeasurementTabs() {
           <>
             <TabsContent value="temperature">
               <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <ThermometerIcon className="h-5 w-5 text-muted-foreground" />
                     Temperature Readings
                   </CardTitle>
@@ -311,30 +310,32 @@ export function MeasurementTabs() {
                   {temperatureMeasurements.length === 0 ? (
                     <div className="text-center py-4 text-muted-foreground">No temperature measurements available</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>Temperature</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {temperatureMeasurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'temperature')}>
-                              {measurement.temperature !== null ? `${measurement.temperature.toFixed(1)}°C` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'temperature')}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[30%]">Painting</TableHead>
+                            <TableHead>Temperature</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {temperatureMeasurements.map((measurement) => (
+                            <TableRow key={measurement.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                              <TableCell className={getCellStyle(measurement, 'temperature')}>
+                                {measurement.temperature !== null ? `${measurement.temperature.toFixed(1)}°C` : 'N/A'}
+                              </TableCell>
+                              <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                              <TableCell className="text-right">
+                                {getStatusBadge(measurement, 'temperature')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -342,8 +343,8 @@ export function MeasurementTabs() {
             
             <TabsContent value="humidity">
               <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <DropletIcon className="h-5 w-5 text-muted-foreground" />
                     Humidity Readings
                   </CardTitle>
@@ -353,30 +354,32 @@ export function MeasurementTabs() {
                   {humidityMeasurements.length === 0 ? (
                     <div className="text-center py-4 text-muted-foreground">No humidity measurements available</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>Humidity</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {humidityMeasurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'humidity')}>
-                              {measurement.humidity !== null ? `${measurement.humidity}%` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'humidity')}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[30%]">Painting</TableHead>
+                            <TableHead>Humidity</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {humidityMeasurements.map((measurement) => (
+                            <TableRow key={measurement.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                              <TableCell className={getCellStyle(measurement, 'humidity')}>
+                                {measurement.humidity !== null ? `${measurement.humidity}%` : 'N/A'}
+                              </TableCell>
+                              <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                              <TableCell className="text-right">
+                                {getStatusBadge(measurement, 'humidity')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -384,8 +387,8 @@ export function MeasurementTabs() {
             
             <TabsContent value="co2">
               <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <Wind className="h-5 w-5 text-muted-foreground" />
                     CO₂ Readings
                   </CardTitle>
@@ -395,30 +398,32 @@ export function MeasurementTabs() {
                   {co2Measurements.length === 0 ? (
                     <div className="text-center py-4 text-muted-foreground">No CO₂ measurements available</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>CO₂ Level</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {co2Measurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'co2concentration')}>
-                              {measurement.co2concentration !== null ? `${measurement.co2concentration} ppm` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'co2concentration')}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[30%]">Painting</TableHead>
+                            <TableHead>CO₂ Level</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {co2Measurements.map((measurement) => (
+                            <TableRow key={measurement.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                              <TableCell className={getCellStyle(measurement, 'co2concentration')}>
+                                {measurement.co2concentration !== null ? `${measurement.co2concentration} ppm` : 'N/A'}
+                              </TableCell>
+                              <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                              <TableCell className="text-right">
+                                {getStatusBadge(measurement, 'co2concentration')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -426,8 +431,8 @@ export function MeasurementTabs() {
             
             <TabsContent value="airPressure">
               <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <AlertCircle className="h-5 w-5 text-muted-foreground" />
                     Air Pressure Readings
                   </CardTitle>
@@ -437,30 +442,32 @@ export function MeasurementTabs() {
                   {airPressureMeasurements.length === 0 ? (
                     <div className="text-center py-4 text-muted-foreground">No air pressure measurements available</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>Air Pressure</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {airPressureMeasurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'airpressure')}>
-                              {measurement.airpressure !== null ? `${measurement.airpressure.toFixed(1)} hPa` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'airpressure')}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[30%]">Painting</TableHead>
+                            <TableHead>Air Pressure</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {airPressureMeasurements.map((measurement) => (
+                            <TableRow key={measurement.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                              <TableCell className={getCellStyle(measurement, 'airpressure')}>
+                                {measurement.airpressure !== null ? `${measurement.airpressure.toFixed(1)} hPa` : 'N/A'}
+                              </TableCell>
+                              <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                              <TableCell className="text-right">
+                                {getStatusBadge(measurement, 'airpressure')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -468,8 +475,8 @@ export function MeasurementTabs() {
             
             <TabsContent value="moldRisk">
               <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <AlertCircle className="h-5 w-5 text-muted-foreground" />
                     Mold Risk Readings
                   </CardTitle>
@@ -479,72 +486,32 @@ export function MeasurementTabs() {
                   {moldRiskMeasurements.length === 0 ? (
                     <div className="text-center py-4 text-muted-foreground">No mold risk measurements available</div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>Mold Risk Level</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {moldRiskMeasurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'moldrisklevel')}>
-                              {measurement.moldrisklevel !== null ? `Level ${measurement.moldrisklevel}` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'moldrisklevel')}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[30%]">Painting</TableHead>
+                            <TableHead>Mold Risk Level</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="illumination">
-              <Card className="shadow-sm border-t-2 border-t-blue-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <SunIcon className="h-5 w-5 text-muted-foreground" />
-                    Illumination Readings
-                  </CardTitle>
-                  <CardDescription>Last {illuminationMeasurements.length} illumination readings across monitored paintings</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {illuminationMeasurements.length === 0 ? (
-                    <div className="text-center py-4 text-muted-foreground">No illumination measurements available</div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[30%]">Painting</TableHead>
-                          <TableHead>Illumination</TableHead>
-                          <TableHead>Time</TableHead>
-                          <TableHead className="text-right">Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {illuminationMeasurements.map((measurement) => (
-                          <TableRow key={measurement.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
-                            <TableCell className={getCellStyle(measurement, 'illuminance')}>
-                              {measurement.illuminance !== null ? `${measurement.illuminance} lux` : 'N/A'}
-                            </TableCell>
-                            <TableCell>{formatTime(measurement.timestamp)}</TableCell>
-                            <TableCell className="text-right">
-                              {getStatusBadge(measurement, 'illuminance')}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {moldRiskMeasurements.map((measurement) => (
+                            <TableRow key={measurement.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{measurement.paintings?.name || 'Unknown'}</TableCell>
+                              <TableCell className={getCellStyle(measurement, 'moldrisklevel')}>
+                                {measurement.moldrisklevel !== null ? `Level ${measurement.moldrisklevel}` : 'N/A'}
+                              </TableCell>
+                              <TableCell>{formatTime(measurement.timestamp)}</TableCell>
+                              <TableCell className="text-right">
+                                {getStatusBadge(measurement, 'moldrisklevel')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>

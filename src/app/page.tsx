@@ -198,21 +198,148 @@ export default function DashboardPage() {
 
   // Set up initial data fetch
   useEffect(() => {
-    // Initial full fetch
-    fetchDashboardData({ full: true });
-    // No more auto-refresh interval - we'll rely on the DashboardRefresher instead
+    fetchDashboardData();
+    
+    // Set up polling for regular updates (every 30 seconds)
+    const intervalId = setInterval(() => {
+      fetchDashboardData({ 
+        full: false, 
+        alerts: true, // Always check for new alerts
+        devices: true, // Keep device status updated
+      });
+    }, 30000);
+    
+    return () => clearInterval(intervalId);
   }, [fetchDashboardData]);
-  
-  // Handle refresh triggered by DashboardRefresher
+
+  // Handler for data updates from the DashboardRefresher
   const handleDataUpdate = useCallback(() => {
-    console.log('Data update detected - performing targeted refresh');
-    // Only fetch the data that changes frequently: alerts and data points
-    fetchDashboardData({ full: false, alerts: true, dataPoints: true });
+    console.log('Data update received in dashboard');
+    // Refresh the most important data (alerts and devices) without loading state
+    fetchDashboardData({ 
+      full: false, 
+      alerts: true,
+      devices: true
+    });
   }, [fetchDashboardData]);
-  
-  // Handle manual refresh button click - do a full refresh
+
+  // Handle manual refresh
   const handleRefresh = () => {
-    fetchDashboardData({ full: true });
+    fetchDashboardData();
+  };
+
+  // Calculate active devices
+  const activeDevices = devices.filter(device => device.status === 'active').length;
+
+  // Get alert info for display
+  const getAlertInfo = (alert: any) => {
+    const alertType = alert.alert_type?.toLowerCase();
+    const thresholdExceeded = alert.threshold_exceeded?.toLowerCase() || 'unknown';
+    const isHighAlert = thresholdExceeded === 'upper';
+    
+    // Default values
+    let icon = <AlertCircle className="h-5 w-5 text-amber-500" />;
+    let title = 'Alert';
+    let problem = 'Unknown issue';
+    let action = 'Check device and conditions';
+    
+    // Match based on alert type
+    switch (alertType) {
+      case 'temperature':
+        icon = <ThermometerIcon className="h-5 w-5 text-amber-500" />;
+        title = `Temperature ${isHighAlert ? 'Too High' : 'Too Low'}`;
+        problem = `Temperature of ${alert.measured_value}°C ${isHighAlert ? 'exceeds' : 'is below'} the ${isHighAlert ? 'upper' : 'lower'} threshold of ${alert.threshold_value}°C`;
+        action = isHighAlert ? 'Reduce temperature in the environment' : 'Increase temperature in the environment';
+        break;
+      case 'humidity':
+        icon = <DropletIcon className="h-5 w-5 text-amber-500" />;
+        title = `Humidity ${isHighAlert ? 'Too High' : 'Too Low'}`;
+        problem = `Humidity of ${alert.measured_value}% ${isHighAlert ? 'exceeds' : 'is below'} the ${isHighAlert ? 'upper' : 'lower'} threshold of ${alert.threshold_value}%`;
+        action = isHighAlert ? 'Reduce humidity in the environment' : 'Increase humidity in the environment';
+        break;
+      case 'co2':
+      case 'co2concentration':
+        icon = <Wind className="h-5 w-5 text-amber-500" />;
+        title = `CO₂ Level ${isHighAlert ? 'Too High' : 'Too Low'}`;
+        problem = `CO₂ concentration of ${alert.measured_value} ppm ${isHighAlert ? 'exceeds' : 'is below'} the ${isHighAlert ? 'upper' : 'lower'} threshold of ${alert.threshold_value} ppm`;
+        action = isHighAlert ? 'Improve ventilation to reduce CO₂ levels' : 'Check ventilation system functionality';
+        break;
+      case 'moldrisk':
+      case 'mold_risk_level':
+      case 'moldrisklevel':
+        icon = <AlertCircle className="h-5 w-5 text-amber-500" />;
+        title = 'High Mold Risk';
+        problem = `Mold risk level of ${alert.measured_value} exceeds the threshold of ${alert.threshold_value}`;
+        action = 'Check humidity and temperature conditions, improve air circulation';
+        break;
+      case 'airpressure':
+        icon = <Cloud className="h-5 w-5 text-amber-500" />;
+        title = `Air Pressure ${isHighAlert ? 'Too High' : 'Too Low'}`;
+        problem = `Air pressure of ${alert.measured_value} hPa ${isHighAlert ? 'exceeds' : 'is below'} the ${isHighAlert ? 'upper' : 'lower'} threshold of ${alert.threshold_value} hPa`;
+        action = 'Ensure environmental controls are functioning properly';
+        break;
+      default:
+        // Generic alert for unknown types
+        title = `${alertType || 'Environmental Parameter'} ${isHighAlert ? 'Too High' : 'Too Low'}`;
+        problem = `Measured value of ${alert.measured_value} ${isHighAlert ? 'exceeds' : 'is below'} the ${isHighAlert ? 'upper' : 'lower'} threshold of ${alert.threshold_value}`;
+        action = 'Check environmental conditions and sensor functionality';
+    }
+    
+    return { icon, title, problem, action };
+  };
+
+  // For getting relative time in a more readable format
+  const getRelativeTime = (timestamp: string) => {
+    try {
+      return formatRelativeTime(new Date(timestamp));
+    } catch (err) {
+      return 'Unknown time';
+    }
+  };
+
+  // Function to deduplicate alerts (show only one per painting & type)
+  const getDeduplicatedAlerts = (alerts: Alert[]): Alert[] => {
+    const uniqueAlertMap = new Map<string, Alert>();
+    
+    alerts.forEach((alert) => {
+      // Create a unique key based on painting ID and alert type
+      const key = `${alert.painting_id}-${alert.alert_type}-${alert.threshold_exceeded}`;
+      
+      // Only keep the most recent alert for each unique combination
+      if (!uniqueAlertMap.has(key) || 
+          new Date(alert.timestamp) > new Date(uniqueAlertMap.get(key)!.timestamp)) {
+        uniqueAlertMap.set(key, alert);
+      }
+    });
+    
+    // Convert map back to array and sort by most recent first
+    return Array.from(uniqueAlertMap.values())
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  };
+
+  // Fix the alert type matching to ensure CO2 alerts display properly
+  const getAlertTitle = (alert: any) => {
+    const alertType = alert.alert_type?.toLowerCase();
+    
+    // Handle CO2 alerts - check both formats
+    if (alertType === 'co2' || alertType === 'co2concentration') {
+      return `CO₂ Level ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+    }
+    
+    // Handle other alert types
+    switch (alertType) {
+      case 'temperature':
+        return `Temperature ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+      case 'humidity':
+        return `Humidity ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+      case 'moldrisk':
+      case 'moldrisklevel':
+        return `High Mold Risk`;
+      case 'airpressure':
+        return `Air Pressure ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+      default:
+        return `Alert: ${alertType || 'Unknown'} ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
+    }
   };
 
   // Function to dismiss an alert
@@ -241,162 +368,40 @@ export default function DashboardPage() {
       console.error('Error dismissing alert:', err);
     }
   }, []);
-
-  // Helper function to determine alert type and icon
-  const getAlertInfo = (alert: any) => {
-    if (!alert) return { icon: null, title: 'Unknown Alert', problem: 'No information available', action: 'Contact system administrator' };
-    
-    const alertType = alert.alert_type?.toLowerCase();
-    
-    // Debug log the alert to help diagnose issues
-    console.log('Processing alert:', alertType, alert);
-    
-    // Handle CO2 alerts regardless of naming convention
-    if (alertType === 'co2' || alertType === 'co2concentration') {
-      const isHigh = alert.threshold_exceeded === 'upper';
-      
-      return {
-        icon: <Wind className="h-4 w-4" />,
-        title: `CO₂ Level ${isHigh ? 'Too High' : 'Too Low'}`,
-        problem: `CO₂ concentration of ${alert.measured_value}ppm ${isHigh ? 'exceeds' : 'is below'} the ${isHigh ? 'maximum' : 'minimum'} threshold of ${alert.threshold_value}ppm.`,
-        action: isHigh ? 'Increase ventilation or reduce the number of people in the room.' : 'Check CO₂ sensor calibration if readings are consistently low.'
-      };
-    }
-    
-    // Handle other standard alert types
-    switch (alertType) {
-        case 'temperature':
-          return {
-          icon: <ThermometerIcon className="h-4 w-4" />,
-          title: `Temperature ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`,
-          problem: `Temperature of ${alert.measured_value}°C ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'is below'} the safe threshold of ${alert.threshold_value}°C.`,
-          action: alert.threshold_exceeded === 'upper' ? 'Lower thermostat setting or improve climate control.' : 'Increase heating in the environment.'
-          };
-        
-        case 'humidity':
-          return {
-          icon: <DropletIcon className="h-4 w-4" />,
-          title: `Humidity ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`,
-          problem: `Humidity of ${alert.measured_value}% ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'is below'} the safe threshold of ${alert.threshold_value}%.`,
-          action: alert.threshold_exceeded === 'upper' ? 'Use dehumidifier or improve ventilation.' : 'Use humidifier to increase moisture in the air.'
-        };
-        
-      case 'moldrisk':
-      case 'moldrisklevel':
-      case 'mold_risk_level':
-        return {
-          icon: <AlertCircle className="h-4 w-4" />,
-          title: `Mold Risk Level High`,
-          problem: `Mold risk level is high (Level ${alert.measured_value}).`,
-          action: `Urgently reduce humidity and increase ventilation to reduce mold growth risk.`
-        };
-          
-        case 'airpressure':
-        case 'air_pressure':
-          return {
-          icon: <Cloud className="h-4 w-4" />,
-          title: `Air Pressure ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`,
-          problem: `Air pressure of ${alert.measured_value} hPa ${alert.threshold_exceeded === 'upper' ? 'exceeds' : 'is below'} the threshold of ${alert.threshold_value} hPa.`,
-          action: alert.threshold_exceeded === 'upper' ? 'Check building pressure controls.' : 'Monitor environmental conditions.'
-          };
-          
-        default:
-        console.log(`Unknown alert type: ${alertType}`, alert);
-          return {
-          icon: <AlertCircle className="h-4 w-4" />,
-          title: `Environmental Alert`,
-          problem: `Environmental condition (${alertType || 'unknown'}) outside safe thresholds.`,
-          action: 'Check environmental control systems.'
-        };
-    }
+  
+  // State for alert details dialog
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [showAlertDialog, setShowAlertDialog] = useState(false);
+  
+  // Function to show alert details
+  const showAlertDetails = (alert: Alert) => {
+    setSelectedAlert(alert);
+    setShowAlertDialog(true);
   };
-
-  // Helper function to format relative time
-  const getRelativeTime = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp);
-      return `${format(date, 'MMM d, yyyy')} at ${format(date, 'h:mm a')}`;
-    } catch (err) {
-      return 'recently';
-    }
-  };
-
-  // Calculate active devices - those with recent measurements
-  const activeDevices = devices.filter(device => 
-    device.status === 'active' || device.status === 'connected'
-  ).length;
-
-  // Function to deduplicate alerts, keeping only the latest one for each unique combination
-  // of painting_id, alert_type, and threshold_exceeded
-  const getDeduplicatedAlerts = (alerts: Alert[]): Alert[] => {
-    // Create a map to store the latest alert for each unique combination
-    const alertMap = new Map<string, Alert>();
-    
-    // Sort alerts by timestamp in descending order (newest first)
-    const sortedAlerts = [...alerts].sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-    
-    // Process alerts and keep only the latest one for each unique combination
-    sortedAlerts.forEach(alert => {
-      // Create a unique key based on painting_id, alert_type, and threshold_exceeded
-      const key = `${alert.painting_id}-${alert.alert_type}-${alert.threshold_exceeded}`;
-      
-      // Only add to the map if this combination doesn't exist yet (since we're already sorted by time)
-      if (!alertMap.has(key)) {
-        alertMap.set(key, alert);
-      }
-    });
-    
-    // Return the deduplicated alerts as an array
-    return Array.from(alertMap.values());
-  };
-
-  // Fix the alert type matching to ensure CO2 alerts display properly
-  const getAlertTitle = (alert: any) => {
-    const alertType = alert.alert_type?.toLowerCase();
-    
-    // Handle CO2 alerts - check both formats
-    if (alertType === 'co2' || alertType === 'co2concentration') {
-      return `CO₂ Level ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
-    }
-    
-    // Handle other alert types
-    switch (alertType) {
-      case 'temperature':
-        return `Temperature ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
-      case 'humidity':
-        return `Humidity ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
-      case 'moldrisk':
-      case 'moldrisklevel':
-        return `High Mold Risk`;
-      case 'airpressure':
-        return `Air Pressure ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
-      default:
-        return `Alert: ${alertType || 'Unknown'} ${alert.threshold_exceeded === 'upper' ? 'Too High' : 'Too Low'}`;
-    }
+  
+  // Function to close alert details dialog
+  const closeAlertDialog = () => {
+    setShowAlertDialog(false);
+    setSelectedAlert(null);
   };
 
   // Get deduplicated alerts for display
   const deduplicatedAlerts = getDeduplicatedAlerts(alerts);
 
   return (
-    <div className="space-y-8">
-      {/* DashboardRefresher for data updates */}
-      <DashboardRefresher onDataUpdate={handleDataUpdate} />
-      
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-muted-foreground">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div className="flex items-center gap-2 mt-2 sm:mt-0">
+          <span className="text-sm text-muted-foreground">
             Last updated: {format(new Date(lastRefresh), 'HH:mm:ss')}
-          </div>
+          </span>
           <button 
             onClick={handleRefresh}
-            className="p-1 rounded-md hover:bg-gray-100 text-gray-500"
-            aria-label="Refresh data"
+            className="rounded-full p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            title="Refresh dashboard data"
           >
-            <RefreshCcw size={18} />
+            <RefreshCcw className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -409,30 +414,30 @@ export default function DashboardPage() {
         </Alert>
       )}
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-sm border-l-2 border-l-blue-400">
-          <CardHeader className="pb-2 pt-4">
+          <CardHeader className="pb-2 pt-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">Total Paintings</CardTitle>
               <FrameIcon className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
+            <div className="text-2xl sm:text-3xl font-bold">
               {loading ? '...' : paintings.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Monitored artworks</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-l-2 border-l-green-400">
-          <CardHeader className="pb-2 pt-4">
+          <CardHeader className="pb-2 pt-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
               <DevicesIcon className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
+            <div className="text-2xl sm:text-3xl font-bold">
               {loading ? '...' : activeDevices}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -441,14 +446,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
         <Card className="shadow-sm border-l-2 border-l-amber-400">
-          <CardHeader className="pb-2 pt-4">
+          <CardHeader className="pb-2 pt-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">Alerts</CardTitle>
               <BellIcon className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-amber-600">
+            <div className="text-2xl sm:text-3xl font-bold text-amber-600">
               {loading ? '...' : deduplicatedAlerts.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -457,14 +462,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
         <Card className="shadow-sm border-l-2 border-l-purple-400">
-          <CardHeader className="pb-2 pt-4">
+          <CardHeader className="pb-2 pt-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">Data Points</CardTitle>
               <DatabaseIcon className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
+            <div className="text-2xl sm:text-3xl font-bold">
               {loading ? '...' : dataPoints.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Total measurements</p>
@@ -473,14 +478,14 @@ export default function DashboardPage() {
       </div>
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
-          <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
+            <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
             {deduplicatedAlerts.length > 0 && (
-            <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
+              <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
                 {deduplicatedAlerts.length}
-            </span>
-          )}
+              </span>
+            )}
           </div>
           
           <Link 
@@ -498,51 +503,118 @@ export default function DashboardPage() {
         </div>
         
         {loading ? (
-          <Card className="p-6 text-center text-muted-foreground">
+          <Card className="p-4 sm:p-6 text-center text-muted-foreground">
             Loading alerts...
           </Card>
         ) : deduplicatedAlerts.length > 0 ? (
-          <div className="grid gap-4">
+          <div className="grid gap-2">
             {deduplicatedAlerts.map((alert, index) => {
               const alertInfo = getAlertInfo(alert);
+              const paintingName = alert.paintings?.name || `Painting ID: ${alert.painting_id}`;
+              const artistName = alert.paintings?.artist || 'Unknown Artist';
               return (
-                <Alert key={alert.id || index} variant="warning" className="shadow-sm border-l-2 border-l-amber-400 relative">
-                  {/* Add dismiss button */}
-                  <button 
-                    onClick={() => handleDismissAlert(alert.id)}
-                    className="absolute top-3 right-3 text-amber-500 hover:text-amber-700 transition-colors"
-                    aria-label="Dismiss alert"
-                    title="Dismiss alert"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="m15 9-6 6" />
-                      <path d="m9 9 6 6" />
-                    </svg>
-                  </button>
-                  
-                  {alertInfo.icon}
-                  <AlertTitle className="font-semibold">{alertInfo.title}</AlertTitle>
-                  <AlertDescription>
-                    <div className="mt-2 space-y-1">
-                      <p><strong>Painting:</strong> {alert.paintings?.name 
-                        ? `${alert.paintings.name} by ${alert.paintings.artist || 'Unknown Artist'}` 
-                        : `ID: ${alert.painting_id || 'Unknown'}`}</p>
-                      <p><strong>Problem:</strong> {alertInfo.problem}</p>
-                      <p><strong>Action:</strong> {alertInfo.action}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Last updated {alert.timestamp ? formatRelativeTime(new Date(alert.timestamp)) : 'recently'}
-                      </p>
+                <button 
+                  key={alert.id || index} 
+                  className="text-left w-full"
+                  onClick={() => showAlertDetails(alert)}
+                >
+                  <Alert variant="warning" className="shadow-sm border-l-2 border-l-amber-400 relative pr-10 cursor-pointer hover:bg-amber-50 py-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDismissAlert(alert.id);
+                      }}
+                      className="absolute top-2 right-2 text-amber-500 hover:text-amber-700 transition-colors"
+                      aria-label="Dismiss alert"
+                      title="Dismiss alert"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="m15 9-6 6" />
+                        <path d="m9 9 6 6" />
+                      </svg>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {alertInfo.icon}
+                      <div>
+                        <AlertTitle className="font-semibold mb-0 truncate">{alertInfo.title}</AlertTitle>
+                        <AlertDescription className="mt-0">
+                          <p className="text-sm truncate">{paintingName}</p>
+                        </AlertDescription>
+                      </div>
                     </div>
-                  </AlertDescription>
-                </Alert>
+                  </Alert>
+                </button>
               );
             })}
           </div>
         ) : (
-          <Card className="p-6 text-center">
+          <Card className="p-4 sm:p-6 text-center">
             <p className="text-muted-foreground">No active alerts at this time</p>
           </Card>
+        )}
+        
+        {/* Alert Details Dialog */}
+        {showAlertDialog && selectedAlert && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
+              <div className="p-5">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-xl font-bold">Alert Details</h3>
+                  <button 
+                    onClick={closeAlertDialog}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                
+                {(() => {
+                  const alertInfo = getAlertInfo(selectedAlert);
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        {alertInfo.icon}
+                        <span className="font-semibold text-lg">{alertInfo.title}</span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <p><strong>Painting:</strong> {selectedAlert.paintings?.name 
+                          ? `${selectedAlert.paintings.name} by ${selectedAlert.paintings.artist || 'Unknown Artist'}` 
+                          : `ID: ${selectedAlert.painting_id || 'Unknown'}`}</p>
+                        <p><strong>Problem:</strong> {alertInfo.problem}</p>
+                        <p><strong>Action:</strong> {alertInfo.action}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Last updated {selectedAlert.timestamp ? formatRelativeTime(new Date(selectedAlert.timestamp)) : 'recently'}
+                        </p>
+                      </div>
+                      
+                      <div className="mt-6 flex justify-end gap-3">
+                        <button
+                          onClick={closeAlertDialog}
+                          className="px-4 py-2 bg-gray-200 rounded-md text-gray-800 hover:bg-gray-300 font-medium"
+                        >
+                          Close
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleDismissAlert(selectedAlert.id);
+                            closeAlertDialog();
+                          }}
+                          className="px-4 py-2 bg-amber-500 rounded-md text-white hover:bg-amber-600 font-medium"
+                        >
+                          Dismiss Alert
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
         )}
       </section>
       
