@@ -109,8 +109,19 @@ export async function GET(request: NextRequest) {
         
         // Format the alerts for the email
         const alertsText = paintingAlerts.map((alert: Alert) => {
+          // Add extra logging for CO2 alerts to debug the issue
+          if (alert.alert_type === 'co2' || alert.alert_type === 'co2concentration') {
+            console.log('CO2 Alert Details:', {
+              alertType: alert.alert_type,
+              value: alert.measured_value,
+              threshold: alert.threshold_value,
+              timestamp: alert.timestamp
+            });
+          }
+          
           const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                             alert.alert_type === 'illuminance' ? 'Light Level' : 
+                            alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
                             alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
           
           // Special formatting for mold risk
@@ -135,6 +146,7 @@ export async function GET(request: NextRequest) {
                 ${paintingAlerts.map((alert: Alert) => {
                   const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                                     alert.alert_type === 'illuminance' ? 'Light Level' : 
+                                    alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
                                     alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
                   
                   // Special formatting for mold risk
@@ -204,8 +216,19 @@ export async function POST(request: NextRequest) {
           
           // Format the alerts for the email
           const alertsText = alertsForThisDataPoint.map((alert: Alert) => {
+            // Add extra logging for CO2 alerts to debug the issue
+            if (alert.alert_type === 'co2' || alert.alert_type === 'co2concentration') {
+              console.log('CO2 Alert Details:', {
+                alertType: alert.alert_type,
+                value: alert.measured_value,
+                threshold: alert.threshold_value,
+                timestamp: alert.timestamp
+              });
+            }
+            
             const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                               alert.alert_type === 'illuminance' ? 'Light Level' : 
+                              alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
                               alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
             
             // Special formatting for mold risk
@@ -230,6 +253,7 @@ export async function POST(request: NextRequest) {
                   ${alertsForThisDataPoint.map((alert: Alert) => {
                     const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
                                       alert.alert_type === 'illuminance' ? 'Light Level' : 
+                                      alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
                                       alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
                     
                     // Special formatting for mold risk

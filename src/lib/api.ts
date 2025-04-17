@@ -425,9 +425,27 @@ export async function checkAlertsAndNotify() {
         }
         
         // Check CO2 threshold
-        if (alertData.co2 !== null || alertData.co2concentration !== null) {
-          // Get CO2 value from the right field - could be in either co2 or co2concentration
-          const co2Value = alertData.co2 !== null ? alertData.co2 : alertData.co2concentration;
+        if (alertData.co2 !== null || alertData.co2concentration !== null || alertData.co2Concentration !== null) {
+          // Get CO2 value from the right field - could be in any of several field names
+          let co2Value = null;
+          
+          // Enhanced logging to debug the CO2 field issue
+          console.log('🔍 EMAIL CHECK: CO2 field debug:', {
+            hasDataObj: !!alertData,
+            dataFields: Object.keys(alertData || {}),
+            co2Field: alertData?.co2,
+            co2concentrationField: alertData?.co2concentration,
+            co2ConcentrationField: alertData?.co2Concentration,
+          });
+          
+          // Try all possible field variations
+          if (alertData.co2 !== null && alertData.co2 !== undefined) {
+            co2Value = alertData.co2;
+          } else if (alertData.co2concentration !== null && alertData.co2concentration !== undefined) {
+            co2Value = alertData.co2concentration;
+          } else if (alertData.co2Concentration !== null && alertData.co2Concentration !== undefined) {
+            co2Value = alertData.co2Concentration;
+          }
           
           // Set default CO2 threshold of 600 ppm if no material threshold is set
           const co2LowerThreshold = material.threshold_co2concentration_lower;
@@ -438,7 +456,7 @@ export async function checkAlertsAndNotify() {
           // Extra debugging for CO2 values
           console.log('🔍 EMAIL CHECK: CO2 threshold details:', {
             co2Value,
-            co2Field: alertData.co2 !== null ? 'co2' : 'co2concentration',
+            co2Field: alertData.co2 !== null ? 'co2' : alertData.co2concentration !== null ? 'co2concentration' : 'co2Concentration',
             lowerThreshold: co2LowerThreshold,
             upperThreshold: co2UpperThreshold,
             usingDefaultThreshold: co2UpperThreshold === 600 && material.threshold_co2concentration_upper === null,

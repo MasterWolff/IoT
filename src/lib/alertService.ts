@@ -482,7 +482,16 @@ export async function processEnvironmentalData(envData: EnvironmentalData): Prom
       
       // Additional logging for CO2 alerts
       if (dbName === 'co2concentration') {
-        console.log(`Creating CO2 alert: ${value} ppm exceeds ${thresholdUpper} ppm threshold`);
+        console.log(`Creating CO2 alert: ${value} ppm exceeds ${thresholdUpper} ppm threshold`, {
+          alert_type: alertType,
+          measured_value: value,
+          threshold_value: thresholdUpper,
+          painting_id: envData.painting_id,
+          device_id: envData.device_id,
+          environmental_data_id: envData.id,
+          timestamp: envData.timestamp,
+          envDataHasCo2: envData.co2concentration !== undefined && envData.co2concentration !== null
+        });
       }
       
       const storedAlert = await storeAlertRecord(alert);
