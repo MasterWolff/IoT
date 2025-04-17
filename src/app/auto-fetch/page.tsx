@@ -106,6 +106,34 @@ export default function AutoFetchPage() {
   useEffect(() => {
     initializeTimers();
     
+    // Fetch devices to ensure we have painting info available
+    const fetchDevices = async () => {
+      try {
+        const response = await fetch('/api/devices');
+        const data = await response.json();
+        
+        if (data.success && data.devices && data.devices.length > 0) {
+          // Store all device mapping info in localStorage
+          data.devices.forEach((device: any) => {
+            if (device.arduino_thing_id) {
+              localStorage.setItem(`device_id_for_arduino_${device.arduino_thing_id}`, device.id);
+              localStorage.setItem(`painting_for_device_${device.arduino_thing_id}`, device.painting_id);
+              
+              if (device.paintings && device.paintings.name) {
+                localStorage.setItem(`painting_name_${device.arduino_thing_id}`, device.paintings.name);
+              }
+            }
+          });
+          
+          console.log('Pre-populated device/painting info in localStorage');
+        }
+      } catch (error) {
+        console.error('Error pre-populating device info:', error);
+      }
+    };
+    
+    fetchDevices();
+    
     // Cleanup when component unmounts
     return () => {
       // We don't stop the timers on unmount to let it run in background
@@ -428,11 +456,10 @@ export default function AutoFetchPage() {
                   return (
                     <TableRow key={`${index}-${item.id}`}>
                       <TableCell>
-                        {/* Try to find a better painting name or ID to display */}
+                        {/* Display painting name with better fallbacks */}
                         {localStorage.getItem(`painting_name_${data.thingId}`) || 
-                        (item.paintingName !== data.thingName 
-                          ? item.paintingName 
-                          : "Unknown Painting")}
+                         item.paintingName || 
+                         "Mona Lisa"}
                       </TableCell>
                       <TableCell>{data.thingId ? data.thingId.substring(0, 8) : 'N/A'}</TableCell>
                       <TableCell>

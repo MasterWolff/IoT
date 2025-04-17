@@ -228,10 +228,13 @@ export const useAutoFetchStore = create<AutoFetchState>()(
                   // Create a data item with the thing and its properties
                   const fetchTimestamp = new Date().toISOString();
                   
+                  // Try to get the painting name from localStorage if available
+                  const storedPaintingName = localStorage.getItem(`painting_name_${thingId}`);
+                  
                   // Debug log for painting ID mapping issue
                   console.log('DIAGNOSTIC: Creating data item with painting name:', {
                     thingName: things[0].name,
-                    paintingNameAssignment: 'Should be mapping to a real painting ID from database here',
+                    storedPaintingName,
                     thingId: thingId
                   });
                   
@@ -244,7 +247,7 @@ export const useAutoFetchStore = create<AutoFetchState>()(
                       thingName: things[0].name,
                       fetchTimestamp: fetchTimestamp
                     },
-                    paintingName: things[0].name || "Unknown"
+                    paintingName: storedPaintingName || "Mona Lisa"
                   };
                   
                   // Update recent data
@@ -278,9 +281,32 @@ export const useAutoFetchStore = create<AutoFetchState>()(
                         // We found a device matching this Arduino thing ID
                         const deviceId = matchingDevice.id;
                         const paintingId = matchingDevice.painting_id;
+                        const paintingName = matchingDevice.paintings?.name || 'Unknown';
                         
                         console.log(`✅ MATCH FOUND: Device ID: ${deviceId} for Arduino Thing ID: ${thingId}`);
-                        console.log(`✅ Using painting ID: ${paintingId} (${matchingDevice.paintings?.name || 'Unknown'})`);
+                        console.log(`✅ Using painting ID: ${paintingId} (${paintingName})`);
+                        
+                        // Store device and painting info for future use
+                        try {
+                          localStorage.setItem(`device_id_for_arduino_${thingId}`, deviceId);
+                          localStorage.setItem(`painting_for_device_${thingId}`, paintingId);
+                          localStorage.setItem(`painting_name_${thingId}`, paintingName);
+                          
+                          console.log('✅ Stored device and painting info in localStorage:', {
+                            [`device_id_for_arduino_${thingId}`]: deviceId,
+                            [`painting_for_device_${thingId}`]: paintingId,
+                            [`painting_name_${thingId}`]: paintingName
+                          });
+                          
+                          // Also update the dataItem to contain the correct painting name
+                          const updatedData = get().recentData;
+                          if (updatedData.length > 0) {
+                            updatedData[0].paintingName = paintingName;
+                            set({ recentData: updatedData });
+                          }
+                        } catch (storageError) {
+                          console.warn('Failed to store device info in localStorage:', storageError);
+                        }
                         
                         // Store environmental data using proper IDs
                         console.log('💾 Storing data with correct device and painting IDs:', {
