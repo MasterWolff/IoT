@@ -17,6 +17,7 @@ interface LineChartProps {
     strokeDasharray?: string
   }>
   yAxisProps?: Partial<any>
+  height?: number | string
 }
 
 export function LineChart({
@@ -29,16 +30,22 @@ export function LineChart({
   customTooltip,
   referenceLines = [],
   yAxisProps = {},
+  height = "100%",
 }: LineChartProps) {
   return (
-    <ResponsiveContainer width="100%" height="100%" className={className}>
-      <RechartsLineChart data={data}>
+    <ResponsiveContainer width="100%" height={height} className={className}>
+      <RechartsLineChart 
+        data={data}
+        margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+      >
         <XAxis
           dataKey={index}
           stroke="#888888"
           fontSize={12}
           tickLine={false}
           axisLine={false}
+          tick={{ fontSize: '0.7rem' }}
+          tickMargin={8}
         />
         <YAxis
           stroke="#888888"
@@ -46,19 +53,21 @@ export function LineChart({
           tickLine={false}
           axisLine={false}
           tickFormatter={valueFormatter}
+          tick={{ fontSize: '0.7rem' }}
+          width={40}
           {...yAxisProps}
         />
         <Tooltip
           content={customTooltip ? customTooltip : ({ active, payload }) => {
             if (active && payload && payload.length) {
               return (
-                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                <div className="rounded-lg border bg-background p-2 shadow-sm max-w-[90vw] sm:max-w-xs">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex flex-col">
                       <span className="text-[0.70rem] uppercase text-muted-foreground">
                         {index}
                       </span>
-                      <span className="font-bold text-muted-foreground">
+                      <span className="font-bold text-muted-foreground text-xs sm:text-sm">
                         {payload[0].payload[index]}
                       </span>
                     </div>
@@ -67,7 +76,7 @@ export function LineChart({
                         <span className="text-[0.70rem] uppercase text-muted-foreground">
                           {category}
                         </span>
-                        <span className="font-bold" style={{ color: colors[i] }}>
+                        <span className="font-bold text-xs sm:text-sm" style={{ color: colors[i] }}>
                           {valueFormatter(payload[i].value as number)}
                         </span>
                       </div>
@@ -78,6 +87,7 @@ export function LineChart({
             }
             return null
           }}
+          wrapperStyle={{ zIndex: 1000 }}
         />
         {referenceLines.map((line, index) => (
           <ReferenceLine
@@ -89,7 +99,7 @@ export function LineChart({
               position: "right",
               value: line.label,
               fill: line.color || "#888888",
-              fontSize: 12,
+              fontSize: 10,
             } : undefined}
           />
         ))}
@@ -101,6 +111,7 @@ export function LineChart({
             stroke={colors[i]}
             strokeWidth={2}
             dot={false}
+            activeDot={{ r: 4, strokeWidth: 1 }}
           />
         ))}
       </RechartsLineChart>

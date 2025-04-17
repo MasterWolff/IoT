@@ -9,7 +9,7 @@ import { getPaintingById } from '@/lib/clientApi';
 import { Painting, EnvironmentalData } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { LineChart } from "../../../components/ui/line-chart";
-import { AlertTriangle, Bell, X, Filter, SortDesc, Info, Calendar, User, Thermometer, Droplets, Wind, Bug } from "lucide-react";
+import { AlertTriangle, Bell, X, Filter, SortDesc, Info, Calendar, User, Thermometer, Droplets, Wind, Bug, SunMedium, Gauge } from "lucide-react";
 import { 
   Dialog, 
   DialogContent, 
@@ -341,13 +341,13 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto py-4 px-3 sm:py-6 sm:px-4 lg:px-8">
       {/* Hero Section */}
-      <div className="bg-white border rounded-xl shadow-sm p-6 mb-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="bg-white border rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
           {/* Image Column */}
           <div className="lg:col-span-1">
-            <div className="aspect-square rounded-lg  overflow-hidden">
+            <div className="aspect-square rounded-lg overflow-hidden">
               {imageUrl ? (
                 <img 
                   src={imageUrl} 
@@ -363,12 +363,12 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           {/* Details Column */}
           <div className="lg:col-span-2 flex flex-col justify-between">
             <div>
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
                 <div>
-                  <h1 className="text-3xl font-bold text-slate-900">{painting.name}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">{painting.name}</h1>
                   <div className="flex items-center mt-2">
                     <User className="h-4 w-4 text-slate-500 mr-2" />
-                    <p className="text-lg text-slate-700">{painting.artist}</p>
+                    <p className="text-base sm:text-lg text-slate-700">{painting.artist}</p>
                   </div>
                   <div className="flex items-center mt-2">
                     <Calendar className="h-4 w-4 text-slate-500 mr-2" />
@@ -379,16 +379,16 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 </div>
                 
                 {alerts.filter(a => a.status === 'active').length > 0 && (
-                  <Badge variant="outline" className="text-md border-amber-300 bg-amber-50 text-amber-700 flex items-center gap-1">
+                  <Badge variant="outline" className="text-md border-amber-300 bg-amber-50 text-amber-700 flex items-center gap-1 mt-2 sm:mt-0">
                     <AlertTriangle className="h-4 w-4" />
                     {alerts.filter(a => a.status === 'active').length} active alerts
                   </Badge>
-                )}
-              </div>
+                  )}
+                </div>
               
               {/* Materials Section */}
-              <div className="mt-6">
-                <h2 className="text-xl font-semibold text-slate-800 mb-3">Materials</h2>
+              <div className="mt-4 sm:mt-6">
+                <h2 className="text-lg sm:text-xl font-semibold text-slate-800 mb-2 sm:mb-3">Materials</h2>
                 <div className="flex flex-wrap gap-2">
                   {painting.painting_materials.map((pm) => (
                     <Badge key={pm.material_id} variant="outline" className="text-sm py-1 px-3 bg-gray-50">
@@ -397,7 +397,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                   ))}
                 </div>
                 {painting.painting_materials.some(pm => pm.materials.description) && (
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-3 sm:mt-4 space-y-2">
                     {painting.painting_materials
                       .filter(pm => pm.materials.description)
                       .map((pm) => (
@@ -412,61 +412,76 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
             
             {/* Environmental Snapshot */}
             {latestData && (
-              <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gray-50 rounded-lg p-3 border">
+              <div className="mt-6 sm:mt-8 grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-5">
+                <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border">
                   <div className="flex items-center">
-                    <Thermometer className="h-5 w-5 text-orange-600 mr-2 opacity-70" />
-                    <span className="text-sm font-medium text-slate-600">Temperature</span>
+                    <Thermometer className="h-4 sm:h-5 w-4 sm:w-5 text-orange-600 mr-1 sm:mr-2 opacity-70 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-600 truncate">Temperature</span>
                   </div>
-                  <div className="mt-1 flex items-center">
-                    <span className="text-2xl font-semibold text-slate-800">{latestData.temperature?.toFixed(1) || '—'}°C</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xl sm:text-2xl font-semibold text-slate-800">{latestData.temperature?.toFixed(1) || '—'}°C</span>
                     {alertCounts['temperature'] > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                      <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
                         {alertCounts['temperature']} alert{alertCounts['temperature'] > 1 ? 's' : ''}
                       </Badge>
                     )}
                   </div>
                 </div>
                 
-                <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border">
                   <div className="flex items-center">
-                    <Droplets className="h-5 w-5 text-blue-600 mr-2 opacity-70" />
-                    <span className="text-sm font-medium text-slate-600">Humidity</span>
+                    <Droplets className="h-4 sm:h-5 w-4 sm:w-5 text-blue-600 mr-1 sm:mr-2 opacity-70 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-600 truncate">Humidity</span>
                   </div>
-                  <div className="mt-1 flex items-center">
-                    <span className="text-2xl font-semibold text-slate-800">{latestData.humidity?.toFixed(1) || '—'}%</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xl sm:text-2xl font-semibold text-slate-800">{latestData.humidity?.toFixed(1) || '—'}%</span>
                     {alertCounts['humidity'] > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                      <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
                         {alertCounts['humidity']} alert{alertCounts['humidity'] > 1 ? 's' : ''}
                       </Badge>
                     )}
                   </div>
                 </div>
                 
-                <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border">
                   <div className="flex items-center">
-                    <Wind className="h-5 w-5 text-green-600 mr-2 opacity-70" />
-                    <span className="text-sm font-medium text-slate-600">CO₂</span>
+                    <Wind className="h-4 sm:h-5 w-4 sm:w-5 text-green-600 mr-1 sm:mr-2 opacity-70 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-600 truncate">CO₂</span>
                   </div>
-                  <div className="mt-1 flex items-center">
-                    <span className="text-2xl font-semibold text-slate-800">{latestData.co2concentration?.toFixed(0) || '—'} ppm</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xl sm:text-2xl font-semibold text-slate-800">{latestData.co2concentration?.toFixed(0) || '—'} ppm</span>
                     {alertCounts['co2'] > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                      <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
                         {alertCounts['co2']} alert{alertCounts['co2'] > 1 ? 's' : ''}
                       </Badge>
                     )}
                   </div>
                 </div>
                 
-                <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border">
                   <div className="flex items-center">
-                    <Bug className="h-5 w-5 text-amber-600 mr-2 opacity-70" />
-                    <span className="text-sm font-medium text-slate-600">Mold Risk</span>
+                    <SunMedium className="h-4 sm:h-5 w-4 sm:w-5 text-yellow-600 mr-1 sm:mr-2 opacity-70 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-600 truncate">Light</span>
                   </div>
-                  <div className="mt-1 flex items-center">
-                    <span className="text-2xl font-semibold text-slate-800">{latestData.moldrisklevel?.toFixed(1) || '—'}</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xl sm:text-2xl font-semibold text-slate-800">{latestData.illuminance?.toFixed(0) || '—'} lux</span>
+                    {alertCounts['light'] > 0 && (
+                      <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
+                        {alertCounts['light']} alert{alertCounts['light'] > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border">
+                  <div className="flex items-center">
+                    <Bug className="h-4 sm:h-5 w-4 sm:w-5 text-amber-600 mr-1 sm:mr-2 opacity-70 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-600 truncate">Mold Risk</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xl sm:text-2xl font-semibold text-slate-800">{latestData.moldrisklevel?.toFixed(1) || '—'}</span>
                     {alertCounts['moldrisklevel'] > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs border-amber-200 bg-amber-50 text-amber-700">
+                      <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
                         {alertCounts['moldrisklevel']} alert{alertCounts['moldrisklevel'] > 1 ? 's' : ''}
                       </Badge>
                     )}
@@ -479,27 +494,30 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
       </div>
       
       {/* Main Content Tabs */}
-      <Tabs defaultValue="environment" className="mb-8">
-        <TabsList className="mb-4">
-          <TabsTrigger value="environment">Environment Data</TabsTrigger>
-          <TabsTrigger value="alerts">Alerts {alerts.filter(a => a.status === 'active').length > 0 && 
-            <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">
+      <Tabs defaultValue="environment" className="mb-6 sm:mb-8">
+        <TabsList className="mb-4 w-full max-w-full overflow-x-auto flex-wrap sm:flex-nowrap">
+          <TabsTrigger value="environment" className="flex-1 min-w-fit">Environment Data</TabsTrigger>
+          <TabsTrigger value="alerts" className="flex-1 min-w-fit relative">
+            <span>Alerts</span>
+            {alerts.filter(a => a.status === 'active').length > 0 && 
+            <span className="ml-1 px-1.5 py-0.5 inline-flex rounded-full text-xs bg-amber-100 text-amber-800 whitespace-nowrap">
               {alerts.filter(a => a.status === 'active').length}
-            </span>}</TabsTrigger>
+            </span>}
+          </TabsTrigger>
         </TabsList>
         
         {/* Environment Data Tab */}
         <TabsContent value="environment">
           <Card className="border shadow-sm">
-            <CardHeader className="border-b bg-white pb-4">
+            <CardHeader className="border-b bg-white pb-3 sm:pb-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
                 <div>
-                  <CardTitle className="text-xl text-slate-800">Environmental Monitoring</CardTitle>
-                  <CardDescription className="mt-1">Historical environmental data for this artwork</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl text-slate-800">Environmental Monitoring</CardTitle>
+                  <CardDescription className="mt-1 text-sm">Historical environmental data for this artwork</CardDescription>
                 </div>
-                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <div className="flex flex-col md:flex-row md:items-center gap-2 sm:gap-3">
                   {filteredChartData.length > 0 && (
-                    <div className="text-sm font-medium text-slate-600">
+                    <div className="text-xs sm:text-sm font-medium text-slate-600">
                       <span>{filteredChartData.length} measurements</span>
                       <span className="ml-2">{getTimeRangeDisplay()}</span>
                     </div>
@@ -509,7 +527,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       variant={dateFilter === "today" ? "default" : "outline"} 
                       size="sm" 
                       onClick={() => setDateFilter("today")}
-                      className={`text-xs h-7 px-3 ${dateFilter !== "today" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                      className={`text-xs h-7 px-2 sm:px-3 ${dateFilter !== "today" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
                     >
                       Today
                     </Button>
@@ -517,15 +535,15 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       variant={dateFilter === "week" ? "default" : "outline"} 
                       size="sm" 
                       onClick={() => setDateFilter("week")}
-                      className={`text-xs h-7 px-3 ${dateFilter !== "week" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                      className={`text-xs h-7 px-2 sm:px-3 ${dateFilter !== "week" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
                     >
-                      Past 7 days
+                      Past 7d
                     </Button>
                     <Button 
                       variant={dateFilter === "all" ? "default" : "outline"} 
                       size="sm" 
                       onClick={() => setDateFilter("all")}
-                      className={`text-xs h-7 px-3 ${dateFilter !== "all" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
+                      className={`text-xs h-7 px-2 sm:px-3 ${dateFilter !== "all" ? "bg-white text-slate-700 hover:bg-gray-50" : ""}`}
                     >
                       All time
                     </Button>
@@ -534,8 +552,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="bg-white border-b py-3 px-4">
-                <Tabs defaultValue="temperature" className="space-y-4">
+              <div className="bg-white border-b py-2 sm:py-3 px-3 sm:px-4">
+                <Tabs defaultValue="temperature" className="space-y-3 sm:space-y-4">
                   <div className="overflow-x-auto pb-2 scrollbar-hide" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
                     <style jsx global>{`
                       .scrollbar-hide::-webkit-scrollbar {
@@ -543,50 +561,63 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       }
                     `}</style>
                     <TabsList className="bg-gray-50 p-1 rounded-full w-fit min-w-full">
-                      <TabsTrigger value="temperature" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
-                        <Thermometer className="h-4 w-4" />Temperature
+                      <TabsTrigger value="temperature" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <Thermometer className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Temperature</span>
                       </TabsTrigger>
-                      <TabsTrigger value="humidity" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
-                        <Droplets className="h-4 w-4" />Humidity
+                      <TabsTrigger value="humidity" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <Droplets className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Humidity</span>
                       </TabsTrigger>
-                      <TabsTrigger value="co2" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
-                        <Wind className="h-4 w-4" />CO₂
+                      <TabsTrigger value="co2" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <Wind className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">CO₂</span>
                       </TabsTrigger>
-                      <TabsTrigger value="light" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white">Light</TabsTrigger>
-                      <TabsTrigger value="airpressure" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white">Air Pressure</TabsTrigger>
-                      <TabsTrigger value="moldRisk" className="rounded-full px-4 py-1.5 data-[state=active]:bg-white flex items-center gap-1">
-                        <Bug className="h-4 w-4" />Mold Risk
+                      <TabsTrigger value="light" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <SunMedium className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Light</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="airpressure" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <Gauge className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Air Pressure</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="moldRisk" className="rounded-full px-2 sm:px-4 py-1 sm:py-1.5 data-[state=active]:bg-white flex items-center gap-1 text-xs sm:text-sm">
+                        <Bug className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Mold Risk</span>
                       </TabsTrigger>
                     </TabsList>
                   </div>
 
-                  <TabsContent value="temperature" className="p-4 m-0">
+                  <TabsContent value="temperature" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No temperature data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">Temperature Over Time</h3>
-                        <p className="text-sm text-slate-500">Measured in °C</p>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Thermometer className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">Temperature Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Measured in °C</p>
                         
                         {/* Add threshold badges if available */}
                         {getThresholds('Temperature') && (
-                          <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="flex flex-wrap gap-1 sm:gap-2 mt-2">
                             {getThresholds('Temperature')?.lower !== null && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
                                 Min: {getThresholds('Temperature')?.lower}°C
                               </Badge>
                             )}
                             {getThresholds('Temperature')?.upper !== null && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                                 Max: {getThresholds('Temperature')?.upper}°C
                               </Badge>
                             )}
                           </div>
                         )}
                         
-                        <div className="h-[400px] mt-4">
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["Temperature"]}
@@ -602,19 +633,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 
                                 if (thresholds) {
                                   if (thresholds.lower !== null && temperature < thresholds.lower) {
-                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800 text-xs">Too Low</Badge>;
                                   } else if (thresholds.upper !== null && temperature > thresholds.upper) {
-                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800 text-xs">Too High</Badge>;
                                   } else {
-                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800 text-xs">OK</Badge>;
                                   }
                                 }
                                 
                                 return (
                                   <div className="bg-white p-2 border rounded shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-medium">Temperature:</span>
-                                      <span>{temperature.toFixed(1)}°C {statusBadge}</span>
+                                      <span className="font-medium text-sm">Temperature:</span>
+                                      <span className="text-sm">{temperature.toFixed(1)}°C {statusBadge}</span>
                                     </div>
                                   </div>
                                 );
@@ -648,33 +679,36 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
 
-                  <TabsContent value="humidity" className="p-4 m-0">
+                  <TabsContent value="humidity" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No humidity data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">Humidity Over Time</h3>
-                        <p className="text-sm text-slate-500">Measured in %</p>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Droplets className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">Humidity Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Measured in %</p>
                         
                         {/* Add threshold badges if available */}
                         {getThresholds('Humidity') && (
-                          <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="flex flex-wrap gap-1 sm:gap-2 mt-2">
                             {getThresholds('Humidity')?.lower !== null && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
                                 Min: {getThresholds('Humidity')?.lower}%
                               </Badge>
                             )}
                             {getThresholds('Humidity')?.upper !== null && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                                 Max: {getThresholds('Humidity')?.upper}%
                               </Badge>
                             )}
                           </div>
                         )}
                         
-                        <div className="h-[400px] mt-4">
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["Humidity"]}
@@ -690,19 +724,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 
                                 if (thresholds) {
                                   if (thresholds.lower !== null && humidity < thresholds.lower) {
-                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800 text-xs">Too Low</Badge>;
                                   } else if (thresholds.upper !== null && humidity > thresholds.upper) {
-                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800 text-xs">Too High</Badge>;
                                   } else {
-                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800 text-xs">OK</Badge>;
                                   }
                                 }
                                 
                                 return (
                                   <div className="bg-white p-2 border rounded shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-medium">Humidity:</span>
-                                      <span>{humidity.toFixed(1)}% {statusBadge}</span>
+                                      <span className="font-medium text-sm">Humidity:</span>
+                                      <span className="text-sm">{humidity.toFixed(1)}% {statusBadge}</span>
                                     </div>
                                   </div>
                                 );
@@ -736,33 +770,36 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
 
-                  <TabsContent value="co2" className="p-4 m-0">
+                  <TabsContent value="co2" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No CO₂ data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">CO₂ Levels Over Time</h3>
-                        <p className="text-sm text-slate-500">Measured in ppm</p>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Wind className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">CO₂ Levels Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Measured in ppm</p>
                         
                         {/* Add threshold badges if available */}
                         {getThresholds('CO2') && (
-                          <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="flex flex-wrap gap-1 sm:gap-2 mt-2">
                             {getThresholds('CO2')?.lower !== null && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
                                 Min: {getThresholds('CO2')?.lower} ppm
                               </Badge>
                             )}
                             {getThresholds('CO2')?.upper !== null && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                                 Max: {getThresholds('CO2')?.upper} ppm
                               </Badge>
                             )}
                           </div>
                         )}
                         
-                        <div className="h-[400px] mt-4">
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["CO2"]}
@@ -778,19 +815,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 
                                 if (thresholds) {
                                   if (thresholds.lower !== null && co2 < thresholds.lower) {
-                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800 text-xs">Too Low</Badge>;
                                   } else if (thresholds.upper !== null && co2 > thresholds.upper) {
-                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800 text-xs">Too High</Badge>;
                                   } else {
-                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800 text-xs">OK</Badge>;
                                   }
                                 }
                                 
                                 return (
                                   <div className="bg-white p-2 border rounded shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-medium">CO₂:</span>
-                                      <span>{co2.toFixed(0)} ppm {statusBadge}</span>
+                                      <span className="font-medium text-sm">CO₂:</span>
+                                      <span className="text-sm">{co2.toFixed(0)} ppm {statusBadge}</span>
                                     </div>
                                   </div>
                                 );
@@ -824,33 +861,36 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
 
-                  <TabsContent value="light" className="p-4 m-0">
+                  <TabsContent value="light" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No light data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">Light Levels Over Time</h3>
-                        <p className="text-sm text-slate-500">Measured in lux</p>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <SunMedium className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">Light Levels Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Measured in lux</p>
                         
                         {/* Add threshold badges if available */}
                         {getThresholds('Illumination') && (
-                          <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="flex flex-wrap gap-1 sm:gap-2 mt-2">
                             {getThresholds('Illumination')?.lower !== null && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
                                 Min: {getThresholds('Illumination')?.lower} lux
                               </Badge>
                             )}
                             {getThresholds('Illumination')?.upper !== null && (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                                 Max: {getThresholds('Illumination')?.upper} lux
                               </Badge>
                             )}
                           </div>
                         )}
                         
-                        <div className="h-[400px] mt-4">
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["Illumination"]}
@@ -866,19 +906,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 
                                 if (thresholds) {
                                   if (thresholds.lower !== null && illumination < thresholds.lower) {
-                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800 text-xs">Too Low</Badge>;
                                   } else if (thresholds.upper !== null && illumination > thresholds.upper) {
-                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800 text-xs">Too High</Badge>;
                                   } else {
-                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800 text-xs">OK</Badge>;
                                   }
                                 }
                                 
                                 return (
                                   <div className="bg-white p-2 border rounded shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-medium">Illumination:</span>
-                                      <span>{illumination.toFixed(1)} lux {statusBadge}</span>
+                                      <span className="font-medium text-sm">Illumination:</span>
+                                      <span className="text-sm">{illumination.toFixed(1)} lux {statusBadge}</span>
                                     </div>
                                   </div>
                                 );
@@ -912,16 +952,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
                   
-                  <TabsContent value="airpressure" className="p-4 m-0">
+                  <TabsContent value="airpressure" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No air pressure data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">Air Pressure Over Time</h3>
-                        <p className="text-sm text-slate-500">Measured in hPa</p>
-                        <div className="h-[400px] mt-4">
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Gauge className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">Air Pressure Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Measured in hPa</p>
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["Air Pressure"]}
@@ -935,32 +978,35 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
                   
-                  <TabsContent value="moldRisk" className="p-4 m-0">
+                  <TabsContent value="moldRisk" className="p-2 sm:p-4 m-0">
                     {filteredChartData.length === 0 ? (
-                      <div className="h-[400px] flex items-center justify-center text-slate-500">
+                      <div className="h-[300px] sm:h-[400px] flex items-center justify-center text-slate-500 text-sm">
                         {chartData.length > 0 ? "No data for selected time period" : "No mold risk data available"}
                       </div>
                     ) : (
                       <div className="w-full border-0 p-0 bg-white">
-                        <h3 className="text-lg font-medium text-slate-800">Mold Risk Level Over Time</h3>
-                        <p className="text-sm text-slate-500">Risk index</p>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Bug className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
+                          <h3 className="text-base sm:text-lg font-medium text-slate-800">Mold Risk Level Over Time</h3>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-500">Risk index</p>
                         
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <div className="flex flex-wrap gap-1 sm:gap-2 mt-2">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
                             Level 0: Safe
                           </Badge>
-                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-xs">
                             Level 1: Low Risk
                           </Badge>
-                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
                             Level 2: Medium Risk
                           </Badge>
-                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                             Level 3: High Risk
                           </Badge>
                         </div>
                         
-                        <div className="h-[400px] mt-4">
+                        <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
                             data={filteredChartData}
                             categories={["Mold Risk"]}
@@ -976,20 +1022,20 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 
                                 switch(moldRisk) {
                                   case 0:
-                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">Safe</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800 text-xs">Safe</Badge>;
                                     statusText = "Safe";
                                     break;
                                   case 1:
-                                    statusBadge = <Badge className="ml-2 bg-yellow-100 text-yellow-800">Low Risk</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-yellow-100 text-yellow-800 text-xs">Low Risk</Badge>;
                                     statusText = "Low Risk";
                                     break;
                                   case 2:
-                                    statusBadge = <Badge className="ml-2 bg-orange-100 text-orange-800">Medium Risk</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-orange-100 text-orange-800 text-xs">Medium Risk</Badge>;
                                     statusText = "Medium Risk";
                                     break;
                                   case 3:
                                   default:
-                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">High Risk</Badge>;
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800 text-xs">High Risk</Badge>;
                                     statusText = "High Risk";
                                     break;
                                 }
@@ -997,8 +1043,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                                 return (
                                   <div className="bg-white p-2 border rounded shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-medium">Mold Risk:</span>
-                                      <span>Level {moldRisk} {statusBadge}</span>
+                                      <span className="font-medium text-sm">Mold Risk:</span>
+                                      <span className="text-sm">Level {moldRisk} {statusBadge}</span>
                                     </div>
                                   </div>
                                 );
@@ -1025,9 +1071,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                     )}
                   </TabsContent>
                 </Tabs>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
         </TabsContent>
         
         {/* Alerts Tab */}
@@ -1035,154 +1081,154 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           <Card className="border shadow-sm">
             <CardHeader className="border-b bg-white">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                <CardTitle className="text-xl text-slate-800">Alert History</CardTitle>
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
+                <CardTitle className="text-lg sm:text-xl text-slate-800">Alert History</CardTitle>
                 {alerts.filter(a => a.status === 'active').length > 0 && (
-                  <Badge variant="outline" className="ml-2 border-amber-200 bg-amber-50 text-amber-700">
-                    {alerts.filter(a => a.status === 'active').length} active
-                  </Badge>
-                )}
+                  <Badge variant="outline" className="ml-1 sm:ml-2 border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                {alerts.filter(a => a.status === 'active').length} active
+              </Badge>
+            )}
               </div>
-              <CardDescription>Environmental condition alerts for this artwork</CardDescription>
-            </CardHeader>
-            <CardContent className="p-6">
-              {alerts.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                    <Bell className="h-6 w-6 text-slate-400" />
+              <CardDescription className="text-sm">Environmental condition alerts for this artwork</CardDescription>
+        </CardHeader>
+            <CardContent className="p-3 sm:p-6">
+          {alerts.length === 0 ? (
+                <div className="text-center py-8 sm:py-12 text-slate-500">
+                  <div className="mx-auto w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3 sm:mb-4">
+                    <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-slate-400" />
                   </div>
-                  <p>No alerts recorded for this painting</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {displayedAlertGroups.map((group) => {
-                    const alert = group.latest;
-                    if (!alert) return null;
-                    
-                    return (
+                  <p className="text-sm sm:text-base">No alerts recorded for this painting</p>
+            </div>
+          ) : (
+                <div className="space-y-3 sm:space-y-4">
+              {displayedAlertGroups.map((group) => {
+                const alert = group.latest;
+                if (!alert) return null;
+                
+                return (
                       <div 
                         key={`${alert.alert_type}-${alert.status === 'dismissed'}`} 
-                        className={`flex items-center gap-4 p-4 rounded-lg border ${
+                        className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-lg border ${
                           alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
                         }`}
                       >
-                        <div className={`p-2.5 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
-                          <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-slate-700">
-                                {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
-                              </span>
-                              <Badge variant="outline" className={`bg-opacity-10 border ${
+                        <div className={`p-2 sm:p-2.5 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                          <Bell className={`h-4 w-4 sm:h-5 sm:w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
+                    </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                              <span className="font-medium text-slate-700 text-sm sm:text-base">
+                          {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
+                        </span>
+                              <Badge variant="outline" className={`bg-opacity-10 border text-xs ${
                                 alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
                                 alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
                                 alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
                                 'border-yellow-200 bg-yellow-50 text-yellow-700'
                               }`}>
-                                {alert.alert_type === 'temperature' ? '°C' : 
-                                alert.alert_type === 'humidity' ? '%' : 
-                                alert.alert_type === 'co2' ? 'ppm' : 'lux'}
-                              </Badge>
-                              {group.count > 1 && (
-                                <Badge variant="outline" className="ml-2 bg-gray-50 text-slate-600">
-                                  +{group.count - 1} more
-                                </Badge>
-                              )}
+                          {alert.alert_type === 'temperature' ? '°C' : 
+                           alert.alert_type === 'humidity' ? '%' : 
+                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
+                        </Badge>
+                        {group.count > 1 && (
+                                <Badge variant="outline" className="bg-gray-50 text-slate-600 text-xs">
+                            +{group.count - 1} more
+                          </Badge>
+                        )}
                             </div>
-                            {alert.status === 'dismissed' && (
-                              <Badge variant="outline" className="ml-auto bg-gray-50 text-slate-500">
-                                Resolved
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-2 flex flex-col sm:flex-row sm:justify-between">
-                            <p className="text-sm text-slate-600">
+                        {alert.status === 'dismissed' && (
+                              <Badge variant="outline" className="bg-gray-50 text-slate-500 text-xs">
+                            Resolved
+                          </Badge>
+                        )}
+                      </div>
+                          <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row sm:justify-between">
+                            <p className="text-xs sm:text-sm text-slate-600">
                               Threshold: <span className="font-medium">{alert.threshold_value}</span> | 
                               Actual: <span className={`font-medium ${alert.status === 'active' ? 'text-amber-700' : ''}`}>
                                 {alert.measured_value}
                               </span>
                             </p>
-                            <p className="text-xs text-slate-500 mt-1 sm:mt-0">
-                              Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
-                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5 sm:mt-0">
+                        Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                      </p>
                           </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  <div className="flex justify-center mt-6">
-                    <Button
+                    </div>
+                  </div>
+                );
+              })}
+              
+                  <div className="flex justify-center mt-4 sm:mt-6">
+                    <Button 
                       onClick={() => setDialogOpen(true)}
                       variant="outline"
-                      className="flex items-center gap-2 text-slate-600 bg-white hover:bg-gray-50"
+                      className="flex items-center gap-1 sm:gap-2 text-slate-600 bg-white hover:bg-gray-50 text-xs sm:text-sm h-8 sm:h-9"
                     >
-                      <Info className="h-4 w-4" />
+                      <Info className="h-3 w-3 sm:h-4 sm:w-4" />
                       View all alerts ({alerts.length})
                     </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
         </TabsContent>
       </Tabs>
 
       {/* Alert Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto p-3 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <DialogTitle className="flex items-center gap-1 sm:gap-2 text-base sm:text-lg">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
               <span>All Alerts for {painting.name}</span>
               {alerts.filter(a => a.status === 'active').length > 0 && (
-                <Badge variant="outline" className="ml-2 border-amber-200 bg-amber-50 text-amber-700">
-                  {alerts.filter(a => a.status === 'active').length} active
-                </Badge>
+                <Badge variant="outline" className="ml-1 sm:ml-2 border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                {alerts.filter(a => a.status === 'active').length} active
+              </Badge>
               )}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               History of all environmental alerts for this painting
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-slate-500" />
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0 mb-3 sm:mb-4">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-slate-500" />
               <Select value={alertFilter} onValueChange={setAlertFilter}>
-                <SelectTrigger className="w-[180px] border-slate-200">
+                <SelectTrigger className="w-full sm:w-[180px] border-slate-200 h-8 text-xs sm:text-sm">
                   <SelectValue placeholder="Filter by type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="temperature">Temperature</SelectItem>
-                  <SelectItem value="humidity">Humidity</SelectItem>
-                  <SelectItem value="co2">CO2</SelectItem>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="active">Active only</SelectItem>
-                  <SelectItem value="resolved">Resolved only</SelectItem>
+                  <SelectItem value="all" className="text-xs sm:text-sm">All types</SelectItem>
+                  <SelectItem value="temperature" className="text-xs sm:text-sm">Temperature</SelectItem>
+                  <SelectItem value="humidity" className="text-xs sm:text-sm">Humidity</SelectItem>
+                  <SelectItem value="co2" className="text-xs sm:text-sm">CO2</SelectItem>
+                  <SelectItem value="light" className="text-xs sm:text-sm">Light</SelectItem>
+                  <SelectItem value="active" className="text-xs sm:text-sm">Active only</SelectItem>
+                  <SelectItem value="resolved" className="text-xs sm:text-sm">Resolved only</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
-            <div className="flex items-center gap-2">
-              <SortDesc className="h-4 w-4 text-slate-500" />
+            <div className="flex items-center gap-1 sm:gap-2">
+              <SortDesc className="h-3 w-3 sm:h-4 sm:w-4 text-slate-500" />
               <Select value={alertSort} onValueChange={setAlertSort}>
-                <SelectTrigger className="w-[180px] border-slate-200">
+                <SelectTrigger className="w-full sm:w-[180px] border-slate-200 h-8 text-xs sm:text-sm">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="latest">Latest first</SelectItem>
-                  <SelectItem value="oldest">Oldest first</SelectItem>
-                  <SelectItem value="severity">Severity (highest)</SelectItem>
+                  <SelectItem value="latest" className="text-xs sm:text-sm">Latest first</SelectItem>
+                  <SelectItem value="oldest" className="text-xs sm:text-sm">Oldest first</SelectItem>
+                  <SelectItem value="severity" className="text-xs sm:text-sm">Severity (highest)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="space-y-4 my-4">
+          <div className="space-y-2 sm:space-y-4 my-3 sm:my-4 max-h-[60vh] overflow-y-auto pr-1">
             {alerts
               .filter(alert => {
                 if (alertFilter === "all") return true;
@@ -1203,19 +1249,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 return bRatio - aRatio;
               })
               .map(alert => (
-                <div key={alert.id} className={`flex items-start gap-4 p-4 rounded-lg border ${
+                <div key={alert.id} className={`flex items-start gap-2 sm:gap-4 p-2 sm:p-4 rounded-lg border ${
                   alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
                 }`}>
-                  <div className={`p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
-                    <Bell className={`h-5 w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
+                  <div className={`p-1.5 sm:p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                    <Bell className={`h-3 w-3 sm:h-5 sm:w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-700">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-1">
+                      <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                        <span className="font-medium text-slate-700 text-xs sm:text-sm">
                           {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
                         </span>
-                        <Badge variant="outline" className={`bg-opacity-10 border ${
+                        <Badge variant="outline" className={`bg-opacity-10 border text-xs ${
                           alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
                           alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
                           alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
@@ -1227,21 +1273,21 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         </Badge>
                       </div>
                       {alert.status === 'dismissed' && (
-                        <Badge variant="outline" className="ml-auto bg-gray-50 text-slate-500">
+                        <Badge variant="outline" className="bg-gray-50 text-slate-500 text-xs">
                           Resolved
                         </Badge>
                       )}
                     </div>
-                    <div className="flex justify-between mt-2">
-                      <p className="text-sm text-slate-600">
+                    <div className="flex flex-col sm:flex-row sm:justify-between mt-1 sm:mt-2">
+                      <p className="text-xs sm:text-sm text-slate-600">
                         Threshold: {alert.threshold_value} | Actual: <span className={alert.status === 'active' ? "text-amber-700 font-medium" : ""}>{alert.measured_value}</span>
                       </p>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-xs text-slate-500 mt-0.5 sm:mt-0">
                         {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     </div>
                     {alert.status === 'dismissed' && alert.dismissed_at && (
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-slate-500 mt-0.5 sm:mt-1">
                         Resolved at: {format(new Date(alert.dismissed_at), 'MMM dd, yyyy HH:mm:ss')}
                       </p>
                     )}
@@ -1251,7 +1297,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-white text-slate-700 hover:bg-gray-50">Close</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-white text-slate-700 hover:bg-gray-50 text-xs sm:text-sm h-8 sm:h-9 px-3 py-1">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
