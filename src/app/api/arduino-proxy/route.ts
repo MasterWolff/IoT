@@ -1,119 +1,113 @@
-import { NextResponse } from 'next/server';
-import { createArduinoCloudClient } from '@/lib/arduinoCloud';
-import { supabase } from '@/lib/supabase';
-import { Device } from '@/lib/supabase';
+import { NextRequest, NextResponse } from "next/server";
+import { ArduinoCloudClient } from '@/lib/arduinoCloud';
 
-// Arduino Cloud API credentials
-const ARDUINO_CLOUD_CLIENT_ID = process.env.ARDUINO_CLOUD_CLIENT_ID || "9Jw0vR0nlmbiglWl1Xd1WAWKH348vpV4";
-const ARDUINO_CLOUD_CLIENT_SECRET = process.env.ARDUINO_CLOUD_CLIENT_SECRET || "JQD5lFjHRRrBkjRP6JN7pxzVYIAqbCLCtwgWoDs78FFzrs2dHEP5CZmhUWTsECNf";
+// Arduino Cloud API credentials directly from environment
+const CLIENT_ID = "9Jw0vR0nlmbiglWl1Xd1WAWKH348vpV4";
+const CLIENT_SECRET = "JQD5lFjHRRrBkjRP6JN7pxzVYIAqbCLCtwgWoDs78FFzrs2dHEP5CZmhUWTsECNf";
 
-interface DeviceWithPainting extends Device {
-  paintings: {
-    name: string;
-    artist: string;
-  };
-}
+// Default Thing ID to use if none is provided
+const DEFAULT_THING_ID = "78c2f632-ef2c-4bfe-ad6a-fc18baad480b";
 
-export async function GET() {
+export async function POST(req: NextRequest) {
   try {
-    console.log("Arduino proxy API called");
-    
-    // Only get devices with arduino_thing_id set
-    const { data: devicesWithThingId, error: thingIdError } = await supabase
-      .from('devices')
-      .select('id, painting_id, arduino_thing_id, paintings(name, artist)')
-      .not('arduino_thing_id', 'is', null)
-      .limit(5);
-    
-    if (thingIdError) {
-      console.error("Database error fetching devices with Thing ID:", thingIdError);
+    const body = await req.json();
+    const { propertyId, value, thingId } = body;
+
+    if (!propertyId) {
       return NextResponse.json(
-        { error: `Failed to fetch devices with Thing ID: ${thingIdError.message}` },
-        { status: 500 }
-      );
-    }
-    
-    console.log(`Found ${devicesWithThingId?.length || 0} devices with Arduino Thing ID`);
-    
-    if (!devicesWithThingId || devicesWithThingId.length === 0) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: "No devices with Arduino Thing ID found in the database",
-          message: "Please set arduino_thing_id for at least one device in the database" 
-        },
+        { error: "Property ID is required" },
         { status: 400 }
       );
     }
     
-    // Create Arduino Cloud client using the existing implementation
-    const client = createArduinoCloudClient();
+    // Use the provided Thing ID or fall back to the default
+    const targetThingId = thingId || DEFAULT_THING_ID;
     
-    if (!client) {
-      return NextResponse.json(
-        { error: "Failed to create Arduino Cloud client - check environment variables" },
-        { status: 500 }
-      );
-    }
-    
-    // Process results for each device with a thing ID
-    const results = [];
-    
-    for (const device of devicesWithThingId) {
-      const deviceId = device.id;
-      const paintingId = device.painting_id;
-      const thingId = device.arduino_thing_id;
-      
-      if (!thingId) {
-        console.log(`Skipping device ${deviceId} - no Thing ID`);
-        continue;
-      }
-      
-      // Access the painting name using type assertion to bypass TypeScript's type checking
-      let paintingName = "Unknown Painting";
-      if (device.paintings) {
-        // Use type assertion to access the name property safely
-        const paintings = device.paintings as any;
-        paintingName = paintings.name || paintings[0]?.name || "Unknown Painting";
-      }
-      
-      try {
-        // Use the existing implementation to fetch and store data
-        const result = await client.fetchAndStoreSensorData(deviceId, thingId);
-        
-        // Get the properties for the response
-        const properties = await client.getDeviceProperties(thingId);
-        
-        results.push({
-          success: true,
-          thingId: thingId,
-          deviceId: deviceId,
-          paintingId: paintingId,
-          paintingName: paintingName,
-          properties: properties,
-          savedData: result
-        });
-      } catch (deviceError) {
-        console.error(`Error processing device ${deviceId} with thing ID ${thingId}:`, deviceError);
-        results.push({
-          success: false,
-          thingId: thingId,
-          deviceId: deviceId,
-          paintingId: paintingId,
-          error: deviceError instanceof Error ? deviceError.message : 'Unknown error'
-        });
-      }
-    }
-    
-    return NextResponse.json({
-      success: true,
-      processedDevices: results.length,
-      results
-    });
-  } catch (error) {
-    console.error("Arduino proxy error:", error);
+    const arduinoClient = new ArduinoCloudClient(CLIENT_ID, CLIENT_SECRET, targetThingId);
+    const result = await arduinoClient.updateDeviceProperty(propertyId, value);
+
+    return NextResponse.json({ success: true, result });
+  } catch (error: any) {
+    console.error("Error updating Arduino property:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: error.message || "Failed to update property" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const action = url.searchParams.get('action');
+    const propertyId = url.searchParams.get('propertyId');
+    const thingId = url.searchParams.get('thingId') || DEFAULT_THING_ID;
+
+    console.log(`Using Thing ID: ${thingId}`);
+    console.log(`Using credentials: ID=${CLIENT_ID.substring(0, 8)}...`);
+    
+    const arduinoClient = new ArduinoCloudClient(CLIENT_ID, CLIENT_SECRET, thingId);
+    
+    let result;
+    
+    // If no action is specified, default to listing things
+    if (!action) {
+      console.log('No action specified, defaulting to listThings');
+      result = await arduinoClient.listThings();
+      return NextResponse.json({ 
+        success: true, 
+        fetchTimestamp: new Date().toISOString(),
+        results: [{ thingId }],
+        result 
+      });
+    }
+    
+    switch (action) {
+      case 'getProperty':
+        if (!propertyId) {
+          return NextResponse.json(
+            { error: "Property ID is required for getProperty action" },
+            { status: 400 }
+          );
+        }
+        result = await arduinoClient.getDeviceProperty(propertyId);
+        break;
+        
+      case 'getAllProperties':
+        result = await arduinoClient.getAllDeviceProperties();
+        break;
+
+      // New action to exactly match Postman call format  
+      case 'getPropertiesForThing':
+        // Direct thing ID in format matching Postman
+        const directThingId = url.searchParams.get('id');
+        if (directThingId) {
+          result = await arduinoClient.getAllDeviceProperties(directThingId);
+        } else {
+          result = await arduinoClient.getAllDeviceProperties();
+        }
+        break;
+        
+      case 'getDeviceInfo':
+        result = await arduinoClient.getDeviceInfo();
+        break;
+        
+      case 'listThings':
+        result = await arduinoClient.listThings();
+        break;
+        
+      default:
+        return NextResponse.json(
+          { error: "Invalid action specified" },
+          { status: 400 }
+        );
+    }
+
+    return NextResponse.json({ success: true, result });
+  } catch (error: any) {
+    console.error("Error accessing Arduino Cloud:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to access Arduino Cloud" },
       { status: 500 }
     );
   }

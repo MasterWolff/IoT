@@ -27,6 +27,7 @@ import {
   stopTimers,
   restartTimers
 } from '@/lib/autoFetchService';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 // Add type definition for DataItem
 type DataItem = {
@@ -34,6 +35,23 @@ type DataItem = {
   timestamp: string;
   data: any;
   paintingName?: string;
+};
+
+// Add this helper function before the Auto-Fetch page component
+const renderSensorValue = (value: any, unit: string) => {
+  if (value === undefined || value === null) {
+    return 'N/A';
+  }
+  
+  // Format numeric values
+  if (typeof value === 'number') {
+    if (unit === '°C' || unit === '%' || unit === 'hPa') {
+      return `${Number(value).toFixed(1)}${unit}`;
+    }
+    return `${value}${unit ? ` ${unit}` : ''}`;
+  }
+  
+  return `${value}${unit ? ` ${unit}` : ''}`;
 };
 
 export default function AutoFetchPage() {
@@ -65,6 +83,9 @@ export default function AutoFetchPage() {
   // State to force re-renders without page refresh
   const [lastRefresh, setLastRefresh] = useState(new Date());
   
+  // Track if there's an authentication error
+  const [hasAuthError, setHasAuthError] = useState(false);
+  
   // Function to refresh data display - this is called when AutoFetchDataListener detects new data
   const fetchData = () => {
     console.log('Refreshing displayed data from store');
@@ -89,6 +110,15 @@ export default function AutoFetchPage() {
       restartTimers();
     }
   }, [interval, isRunning, isPaused]);
+  
+  // Update the auth error state based on status message
+  useEffect(() => {
+    if (statusMessage.toLowerCase().includes('authentication error')) {
+      setHasAuthError(true);
+    } else if (isRunning && !statusMessage.toLowerCase().includes('error')) {
+      setHasAuthError(false);
+    }
+  }, [statusMessage, isRunning]);
   
   // Handler for start button
   const handleStart = () => {
@@ -122,7 +152,36 @@ export default function AutoFetchPage() {
   };
   
   return (
-    <div className="container mx-auto py-6 space-y-8">
+    <div className="container mx-auto py-6 space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Auto Fetch Data</h1>
+      
+      {hasAuthError && (
+        <Alert variant="destructive" className="mb-4">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <path d="M12 9v4"></path>
+              <path d="M12 17h.01"></path>
+            </svg>
+            <AlertTitle>Authentication Error</AlertTitle>
+          </div>
+          <AlertDescription>
+            <p className="mt-2">Your Arduino Cloud API credentials are invalid or have expired.</p>
+            <p className="mt-1">Please update your ARDUINO_CLOUD_CLIENT_ID and ARDUINO_CLOUD_CLIENT_SECRET in your environment variables.</p>
+            <div className="mt-3">
+              <a 
+                href="https://arduino.github.io/arduino-cloud-client/v4.1.0/authentication/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                Learn how to get new credentials
+              </a>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+      
       <AutoFetchDataListener onDataUpdate={fetchData} />
       
       <div>
@@ -353,13 +412,86 @@ export default function AutoFetchPage() {
                     <TableRow key={`${index}-${item.id}`}>
                       <TableCell>{item.paintingName || data.paintingName || "Unknown Painting"}</TableCell>
                       <TableCell>{data.thingId ? data.thingId.substring(0, 8) : 'N/A'}</TableCell>
-                      <TableCell>{temperature !== null ? `${Number(temperature).toFixed(1)}°C` : 'N/A'}</TableCell>
-                      <TableCell>{humidity !== null ? `${Number(humidity).toFixed(1)}%` : 'N/A'}</TableCell>
-                      <TableCell>{co2 !== null ? `${co2} ppm` : 'N/A'}</TableCell>
-                      <TableCell>{pressure !== null ? `${Number(pressure).toFixed(1)} hPa` : 'N/A'}</TableCell>
-                      <TableCell>{illumination !== null ? `${illumination} lux` : 'N/A'}</TableCell>
-                      <TableCell>{moldRisk !== null ? moldRisk : 'N/A'}</TableCell>
-                      <TableCell>{formatTimestamp(item.timestamp)}</TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.temperature || 
+                          data.directValues?.temperature || 
+                          data.rawSensorValues?.temperature || 
+                          temperature, 
+                          '°C'
+                        )}
+                        {data.realTimeValues?.temperature && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.humidity || 
+                          data.directValues?.humidity || 
+                          data.rawSensorValues?.humidity || 
+                          humidity, 
+                          '%'
+                        )}
+                        {data.realTimeValues?.humidity && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.co2Concentration || 
+                          data.directValues?.co2Concentration || 
+                          data.rawSensorValues?.co2Concentration || 
+                          co2, 
+                          'ppm'
+                        )}
+                        {data.realTimeValues?.co2Concentration && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.airPressure || 
+                          data.directValues?.airPressure || 
+                          data.rawSensorValues?.airPressure || 
+                          pressure, 
+                          'hPa'
+                        )}
+                        {data.realTimeValues?.airPressure && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.illuminance || 
+                          data.directValues?.illuminance || 
+                          data.rawSensorValues?.illuminance || 
+                          illumination, 
+                          'lux'
+                        )}
+                        {data.realTimeValues?.illuminance && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {renderSensorValue(
+                          data.realTimeValues?.moldRiskLevel || 
+                          data.directValues?.moldRiskLevel || 
+                          data.rawSensorValues?.moldRiskLevel || 
+                          moldRisk, 
+                          ''
+                        )}
+                        {data.realTimeValues?.moldRiskLevel && 
+                          <div className="text-xs text-green-600 font-medium">Real-time</div>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {formatTimestamp(data.fetchTimestamp || item.timestamp)}
+                        {data.realTimeValues && Object.keys(data.realTimeValues).length > 0 && 
+                          <div className="text-xs text-green-600 font-medium">
+                            Arduino Cloud
+                          </div>
+                        }
+                      </TableCell>
                     </TableRow>
                   );
                 })}

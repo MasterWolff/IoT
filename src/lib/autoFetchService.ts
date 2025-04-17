@@ -140,11 +140,53 @@ export const useAutoFetchStore = create<AutoFetchState>()(
           });
           
           // Use our proxy endpoint instead of direct API calls
-          const response = await fetch('/api/arduino-proxy');
+          console.log('Calling Arduino proxy API to fetch live data...');
+          const response = await fetch('/api/arduino-proxy?action=listThings');
           
           if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API error: ${response.status} ${errorText}`);
+            let errorMessage = 'Failed to fetch Arduino data';
+            
+            try {
+              const errorData = await response.json();
+              console.error('API error response:', errorData);
+              
+              // Handle authentication errors specifically
+              if (response.status === 401 || errorData.authError) {
+                errorMessage = errorData.details || errorData.error || 
+                  'Arduino Cloud authentication failed. Please check your API credentials.';
+                
+                console.error('Authentication error:', errorData);
+                
+                set({ 
+                  errorCount: get().errorCount + 1,
+                  statusMessage: `Authentication Error: ${errorMessage}`
+                });
+                
+                throw new Error(`Authentication error: ${errorMessage}`);
+              }
+              
+              // Handle invalid action error
+              if (response.status === 400 && (errorData.error || '').includes('Invalid action')) {
+                errorMessage = 'Invalid action specified. The API endpoint requires specific action parameters.';
+                
+                console.error('Invalid action error:', errorData);
+                
+                set({ 
+                  errorCount: get().errorCount + 1,
+                  statusMessage: `API Error: ${errorMessage}`
+                });
+                
+                throw new Error(`API error: ${response.status} ${errorMessage}`);
+              }
+              
+              // Generic error handling
+              errorMessage = errorData.error || errorData.detail || response.statusText;
+            } catch (parseError) {
+              // If we can't parse the response as JSON
+              console.error('Error parsing API error response:', parseError);
+            }
+            
+            throw new Error(`API error: ${response.status} ${errorMessage}`);
           }
           
           const data = await response.json();
@@ -153,64 +195,107 @@ export const useAutoFetchStore = create<AutoFetchState>()(
           console.log('Arduino proxy API response:', data);
           
           if (data.success) {
-            // Handle the new API response format with 'results' array
-            const results = data.results || [];
-            const firstResult = results.length > 0 ? results[0] : null;
+            // Get the list of things
+            const things = data.result || [];
             
-            // Extract properties with better null checks
-            let properties = [];
-            
-            // Try to get properties based on different response formats
-            if (firstResult?.properties && Array.isArray(firstResult.properties)) {
-              properties = firstResult.properties;
-              console.log('Found properties in firstResult.properties');
-            } else if (Array.isArray(data.properties)) {
-              properties = data.properties;
-              console.log('Found properties in data.properties');
-            } else if (firstResult?.savedData?.data) {
-              // This may be the format when actual data was saved
-              console.log('Found data in firstResult.savedData.data');
-              properties = [];
-            } else if (data.data) {
-              console.log('Found properties in data.data');
-              properties = [];
+            // If we have things, get properties for the first one
+            if (things.length > 0) {
+              const thingId = things[0].id;
+              console.log(`Using Thing ID: ${thingId} to fetch properties`);
+              
+              try {
+                // Fetch properties for this thing
+                const propertiesResponse = await fetch(`/api/arduino-proxy?action=getAllProperties&thingId=${thingId}`);
+                
+                if (!propertiesResponse.ok) {
+                  throw new Error(`Failed to fetch properties: ${propertiesResponse.status}`);
+                }
+                
+                const propertiesData = await propertiesResponse.json();
+                console.log('Properties data:', propertiesData);
+                
+                if (propertiesData.success && propertiesData.result) {
+                  // Extract properties
+                  const properties = Array.isArray(propertiesData.result) 
+                    ? propertiesData.result 
+                    : Object.entries(propertiesData.result).map(([key, value]) => ({
+                        id: key,
+                        name: key,
+                        variable_name: key,
+                        last_value: value
+                      }));
+                  
+                  // Create a data item with the thing and its properties
+                  const fetchTimestamp = new Date().toISOString();
+                  const dataItem: DataItem = {
+                    id: crypto.randomUUID(),
+                    timestamp: fetchTimestamp,
+                    data: {
+                      properties: properties,
+                      thingId: thingId,
+                      thingName: things[0].name,
+                      fetchTimestamp: fetchTimestamp
+                    },
+                    paintingName: things[0].name || "Unknown"
+                  };
+                  
+                  // Update recent data
+                  const currentData = get().recentData;
+                  set({
+                    recentData: [dataItem, ...currentData].slice(0, 10),
+                    successCount: get().successCount + 1,
+                    statusMessage: `Successfully fetched data for Thing: ${things[0].name || thingId}`
+                  });
+                  
+                  // Notify data subscribers that new data is available
+                  notifyDataUpdate();
+                  
+                  // Schedule next fetch
+                  if (isRunning && !isPaused) {
+                    const nextTime = new Date(Date.now() + interval * 1000);
+                    set({ nextFetchTime: nextTime.toISOString() });
+                  }
+                  
+                  return propertiesData;
+                } else {
+                  throw new Error(propertiesData.error || 'Failed to fetch properties');
+                }
+              } catch (propertiesError) {
+                console.error('Error fetching properties:', propertiesError);
+                throw propertiesError;
+              }
+            } else {
+              set({ 
+                successCount: get().successCount + 1,
+                statusMessage: `No Arduino things found`
+              });
+              
+              // Create a blank data item
+              const dataItem: DataItem = {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                data: {
+                  properties: [],
+                  message: "No Arduino things found"
+                },
+                paintingName: "No Device"
+              };
+              
+              // Update recent data
+              const currentData = get().recentData;
+              set({
+                recentData: [dataItem, ...currentData].slice(0, 10)
+              });
+              
+              // Notify data subscribers that new data is available
+              notifyDataUpdate();
+              
+              // Schedule next fetch
+              if (isRunning && !isPaused) {
+                const nextTime = new Date(Date.now() + interval * 1000);
+                set({ nextFetchTime: nextTime.toISOString() });
+              }
             }
-            
-            set({ 
-              successCount: get().successCount + 1,
-              statusMessage: `Successfully fetched data from ${results.length} device(s)`
-            });
-            
-            // Create a data item to display
-            const dataItem: DataItem = {
-              id: crypto.randomUUID(),
-              timestamp: new Date().toISOString(),
-              data: {
-                properties: properties,
-                thingId: firstResult?.thingId || data.thingId,
-                deviceId: firstResult?.deviceId || data.deviceId,
-                savedData: firstResult?.savedData || data.savedData,
-                results: results // Include the full results array
-              },
-              paintingName: firstResult?.paintingName || data.paintingName || "Unknown"
-            };
-            
-            // Update recent data
-            const currentData = get().recentData;
-            set({
-              recentData: [dataItem, ...currentData].slice(0, 10)
-            });
-            
-            // Notify data subscribers that new data is available
-            notifyDataUpdate();
-            
-            // Schedule next fetch
-            if (isRunning && !isPaused) {
-              const nextTime = new Date(Date.now() + interval * 1000);
-              set({ nextFetchTime: nextTime.toISOString() });
-            }
-            
-            return data;
           } else {
             throw new Error(data.error || 'Unknown API error');
           }

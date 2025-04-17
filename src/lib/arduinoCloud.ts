@@ -32,86 +32,223 @@ interface ArduinoCloudDevice {
  * Helper class for interacting with Arduino Cloud API
  */
 export class ArduinoCloudClient {
-  private credentials: ArduinoCloudCredentials;
-  private baseUrl = 'https://api2.arduino.cc/iot';
-  
-  constructor(
-    clientId: string | undefined, 
-    clientSecret: string | undefined
-  ) {
-    if (!clientId || !clientSecret) {
-      throw new Error('Arduino Cloud credentials are required');
+  // API base URL without version number
+  private apiBase: string = 'https://api.arduino.cc/iot';
+  private tokenUrl: string = 'https://api.arduino.cc/iot/v1/clients/token';
+  private clientId: string;
+  private clientSecret: string;
+  private accessToken: string = "";
+  private refreshToken: string = "";
+  private tokenExpiry: number = 0;
+  private thingId: string;
+
+  constructor(clientId: string, clientSecret: string, thingId: string = "") {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    this.thingId = thingId;
+    
+    if (!this.clientId || !this.clientSecret) {
+      console.error('ArduinoCloudClient initialization error: clientId and clientSecret are required');
     }
     
-    this.credentials = {
-      clientId,
-      clientSecret
-    };
+    console.log('ArduinoCloudClient initialized');
+    if (thingId) {
+      console.log(`Using Thing ID: ${this.thingId}`);
+    } else {
+      console.warn('No Thing ID provided. You will need to specify thingId for device operations.');
+    }
   }
-  
+
   /**
-   * Get an access token from Arduino Cloud
+   * Set or update the Thing ID to use for device operations
    */
-  private async getToken(): Promise<string> {
-    // Check if we have a valid token
-    const now = Date.now();
-    if (this.credentials.token && this.credentials.tokenExpiry && this.credentials.tokenExpiry > now) {
-      return this.credentials.token;
+  setThingId(thingId: string) {
+    this.thingId = thingId;
+    console.log(`Thing ID updated to: ${this.thingId}`);
+  }
+
+  /**
+   * Update a device property value
+   */
+  async updateDeviceProperty(propertyName: string, value: any, customThingId?: string): Promise<any> {
+    const thingId = customThingId || this.thingId;
+    
+    if (!thingId) {
+      throw new Error('No Thing ID provided. Please set a Thing ID using setThingId or pass a customThingId parameter.');
     }
     
-    // Ensure we have valid credentials
-    if (!this.credentials.clientId || !this.credentials.clientSecret) {
-      throw new Error('Arduino Cloud credentials are missing or invalid');
-    }
+    const endpoint = `/v1/things/${thingId}/properties/${propertyName}/publish`;
     
-    // Request a new token
-    const params = new URLSearchParams();
-    params.append('grant_type', 'client_credentials');
-    params.append('client_id', this.credentials.clientId);
-    params.append('client_secret', this.credentials.clientSecret);
-    params.append('audience', 'https://api2.arduino.cc/iot');
-    
-    const response = await fetch('https://api2.arduino.cc/iot/v1/clients/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify({ value })
     });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get token: ${response.statusText}`);
-    }
-    
-    const tokenData = await response.json();
-    
-    // Store the token and its expiry time
-    this.credentials.token = tokenData.access_token;
-    this.credentials.tokenExpiry = now + (tokenData.expires_in * 1000);
-    
-    // The token should always be defined at this point
-    return this.credentials.token || ''; // Add fallback to empty string to satisfy TypeScript
   }
-  
+
   /**
-   * Make an authenticated request to Arduino Cloud API
+   * Check if the current access token is expired and refresh if needed
    */
-  private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
-    const token = await this.getToken();
+  async refreshAccessTokenIfNeeded(): Promise<string> {
+    const currentTime = Date.now();
+    // Add a 60-second buffer to ensure we don't use a token that's about to expire
+    if (!this.accessToken || currentTime >= this.tokenExpiry - 60000) {
+      console.log("Token expired or not present, refreshing...");
+      return this.refreshAccessToken();
+    }
+    return this.accessToken;
+  }
+
+  /**
+   * Force refreshing the access token
+   */
+  async refreshAccessToken(force: boolean = false): Promise<string> {
+    if (this.accessToken && !force && Date.now() < this.tokenExpiry - 60000) {
+      return this.accessToken;
+    }
+
+    console.log("Requesting new access token...");
     
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        ...options.headers,
-        'Authorization': `Bearer ${token}`
+    try {
+      // Parameters for the token request
+      const params = {
+        grant_type: "client_credentials",
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        audience: "https://api2.arduino.cc/iot"
+      };
+      
+      // Log the token request details (except credentials)
+      console.log(`Token request URL: https://api.arduino.cc/iot/v1/clients/token`);
+      console.log(`Token request parameters: grant_type=${params.grant_type}, client_id=${params.client_id.substring(0, 8)}..., audience=${params.audience}`);
+      
+      // Exactly match the Postman request format with audience parameter
+      const tokenResponse = await fetch("https://api.arduino.cc/iot/v1/clients/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams(params).toString(),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("Failed to fetch token:", errorText);
+        throw new Error(`Token request failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
       }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Arduino Cloud API error: ${response.statusText}`);
+
+      const tokenData = await tokenResponse.json();
+      console.log("Token response:", JSON.stringify(tokenData));
+      this.accessToken = tokenData.access_token;
+      this.refreshToken = tokenData.refresh_token || "";
+      // Convert expires_in (seconds) to an absolute timestamp (milliseconds)
+      this.tokenExpiry = Date.now() + (tokenData.expires_in * 1000);
+      
+      console.log("Successfully obtained new access token");
+      return this.accessToken;
+    } catch (error) {
+      console.error("Token request failed with error:", error);
+      throw error;
     }
+  }
+
+  /**
+   * Make a request to the Arduino Cloud API
+   */
+  async request(endpoint: string, options: any = {}): Promise<any> {
+    // Ensure we have a valid token before making the request
+    const token = await this.refreshAccessTokenIfNeeded();
     
-    return await response.json();
+    // Create full URL - handle both absolute and relative URLs
+    const url = endpoint.startsWith('http') ? endpoint : `${this.apiBase}${endpoint}`;
+    
+    // Set up default headers with auth token
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers || {}
+    };
+    
+    // Combine options with our defaults
+    const requestOptions = {
+      ...options,
+      headers
+    };
+    
+    try {
+      console.log(`Making API request to: ${url}`);
+      console.log(`Request method: ${options.method || 'GET'}`);
+      console.log(`Request headers:`, JSON.stringify(headers));
+      
+      const response = await fetch(url, requestOptions);
+      console.log(`Response status: ${response.status}`);
+      
+      // If unauthorized, try to refresh token and retry once
+      if (response.status === 401) {
+        console.log('Received 401 unauthorized, refreshing token and retrying...');
+        await this.refreshAccessToken(true); // Force token refresh
+        
+        // Update headers with new token
+        requestOptions.headers = {
+          ...requestOptions.headers,
+          'Authorization': `Bearer ${this.accessToken}`
+        };
+        
+        console.log(`Retrying request with new token to: ${url}`);
+        
+        // Retry the request
+        const retryResponse = await fetch(url, requestOptions);
+        console.log(`Retry response status: ${retryResponse.status}`);
+        
+        if (!retryResponse.ok) {
+          const errorText = await retryResponse.text();
+          console.error(`API request failed after token refresh: ${retryResponse.status} ${retryResponse.statusText}`);
+          console.error('Error details:', errorText);
+          throw new Error(`API request failed: ${retryResponse.status} ${retryResponse.statusText}`);
+        }
+        
+        // Try to parse as JSON, but fall back to text if it's not JSON
+        try {
+          const responseData = await retryResponse.json();
+          console.log(`Received response data type: ${typeof responseData}`);
+          return responseData;
+        } catch (e) {
+          const textResponse = await retryResponse.text();
+          console.log(`Received text response: ${textResponse.substring(0, 100)}...`);
+          return textResponse;
+        }
+      }
+      
+      // Handle non-OK responses
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`API request failed: ${response.status} ${response.statusText}`);
+        console.error('Error details:', errorText);
+        
+        // Try to parse error JSON if possible
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.detail || errorJson.message || `API request failed: ${response.status}`);
+        } catch (e) {
+          // If we can't parse as JSON, just use the raw text
+          throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+      }
+      
+      // Try to parse success response as JSON, fall back to text
+      try {
+        const responseData = await response.json();
+        console.log(`Received response data type: ${typeof responseData}`);
+        return responseData;
+      } catch (e) {
+        // If not JSON, return as text
+        const textResponse = await response.text();
+        console.log(`Received text response: ${textResponse.substring(0, 100)}...`);
+        return textResponse;
+      }
+    } catch (error) {
+      console.error(`Error in request to ${url}:`, error);
+      throw error;
+    }
   }
   
   /**
@@ -199,7 +336,7 @@ export class ArduinoCloudClient {
   async getDeviceProperties(thingId: string): Promise<ArduinoCloudProperty[]> {
     console.log(`Fetching properties for Thing ID: ${thingId}`);
     try {
-      const response = await this.request(`/v1/things/${thingId}/properties`);
+      const response = await this.request(`/v2/things/${thingId}/properties`);
       console.log('Properties API response:', response);
       
       // Handle different response formats
@@ -253,6 +390,26 @@ export class ArduinoCloudClient {
       return [];
     } catch (error) {
       console.error(`Error in getDeviceProperties for Thing ID ${thingId}:`, error);
+      
+      // Try fallback to v1 API endpoint if v2 fails
+      try {
+        console.log(`Attempting fallback to v1 API for Thing ID: ${thingId}`);
+        const response = await this.request(`/v1/things/${thingId}/properties`);
+        
+        if (Array.isArray(response)) {
+          return response.map(prop => ({
+            id: prop.id,
+            name: prop.name || prop.variable_name || 'Unknown',
+            variable_name: prop.variable_name,
+            last_value: prop.last_value,
+            type: prop.type || 'unknown',
+            updated_at: prop.value_updated_at || new Date().toISOString()
+          }));
+        }
+      } catch (fallbackError) {
+        console.error(`Fallback to v1 API also failed:`, fallbackError);
+      }
+      
       throw error;
     }
   }
@@ -300,12 +457,16 @@ export class ArduinoCloudClient {
    */
   async fetchAndStoreSensorData(deviceId: string, thingId: string): Promise<any> {
     try {
+      console.log(`Starting data fetch process for device: ${deviceId}, thing: ${thingId}`);
+      
       // Find the painting ID for this device from the database
       const paintingId = await this.getDevicePainting(deviceId);
       
       if (!paintingId) {
         throw new Error(`No painting associated with device: ${deviceId}`);
       }
+      
+      console.log(`Found painting ID: ${paintingId} for device: ${deviceId}`);
       
       // Map Arduino Cloud properties to our database schema
       const data: Partial<EnvironmentalData> = {
@@ -319,6 +480,12 @@ export class ArduinoCloudClient {
       const sensorValues = await this.getSensorValues(thingId);
       console.log('Retrieved sensor values:', sensorValues);
       
+      // Debug log each individual value
+      console.log('Individual sensor values:');
+      Object.entries(sensorValues).forEach(([key, value]) => {
+        console.log(`- ${key}: ${value} (${typeof value})`);
+      });
+      
       // Use the property mapper to standardize field names
       const mappedValues = mapArduinoToDatabaseProperties(sensorValues);
       console.log('Mapped values:', mappedValues);
@@ -331,10 +498,16 @@ export class ArduinoCloudClient {
       Object.entries(mappedValues).forEach(([key, value]) => {
         if (validColumns.includes(key)) {
           filteredValues[key] = value;
+          console.log(`Adding property ${key}: ${value} to database record`);
         } else {
           console.log(`Skipping property ${key} as it doesn't exist in the database`);
         }
       });
+      
+      // Verify we have at least some data
+      if (Object.keys(filteredValues).length === 0) {
+        console.warn(`WARNING: No valid properties found for device ${deviceId}. Check Arduino Cloud connection.`);
+      }
       
       // Merge the filtered values into our data object
       Object.assign(data, filteredValues);
@@ -354,7 +527,9 @@ export class ArduinoCloudClient {
       }
       
       // Store the data in our database
-      return await storeSensorData(data);
+      const result = await storeSensorData(data);
+      console.log(`Data successfully stored for device: ${deviceId}`);
+      return result;
     } catch (error) {
       console.error('Error fetching data from Arduino Cloud:', error);
       throw error;
@@ -365,7 +540,29 @@ export class ArduinoCloudClient {
    * Get the current value of a specific property
    */
   async getPropertyValue(thingId: string, propertyId: string): Promise<any> {
-    return this.request(`/v1/things/${thingId}/properties/${propertyId}`);
+    try {
+      console.log(`Fetching property value for Thing ID: ${thingId}, Property ID: ${propertyId}`);
+      const response = await this.request(`/v1/things/${thingId}/properties/${propertyId}`);
+      
+      // Log the response structure for debugging
+      console.log(`Property API response structure:`, 
+        Object.keys(response).length > 0 
+          ? `Fields: ${Object.keys(response).join(', ')}` 
+          : 'Empty response'
+      );
+      
+      if (response.last_value !== undefined) {
+        console.log(`Found last_value: ${response.last_value}`);
+      } else {
+        console.log('No last_value found in property response');
+      }
+      
+      return response;
+    } catch (error) {
+      console.error(`Error fetching property value for ${propertyId}:`, error);
+      // Return an empty object rather than throwing, to make error handling easier
+      return {};
+    }
   }
 
   /**
@@ -380,25 +577,92 @@ export class ArduinoCloudClient {
       const properties = await this.getDeviceProperties(thingId);
       console.log(`Got ${properties.length} properties for thing ${thingId}`, properties);
       
+      // Arduino property names directly from UI - maintain exact case as shown in Arduino Cloud
+      const exactPropertyNames = ['airPressure', 'co2Concentration', 'humidity', 'temperature', 'illuminance', 'moldRiskLevel'];
+      
+      // Create a direct mapping for proper case sensitivity
+      const propsByVariableName = new Map();
+      for (const prop of properties) {
+        if (prop.variable_name) {
+          propsByVariableName.set(prop.variable_name, prop);
+        }
+      }
+      
+      console.log('Direct property mapping:', [...propsByVariableName.keys()]);
+      
+      // First attempt: Try to get values using the exact property names
+      for (const exactName of exactPropertyNames) {
+        if (propsByVariableName.has(exactName)) {
+          const prop = propsByVariableName.get(exactName);
+          const propId = prop.id;
+          
+          try {
+            // Get detailed property data with the exact property name
+            const propertyData = await this.getPropertyValue(thingId, propId);
+            
+            // Process the value if found
+            if (propertyData && propertyData.last_value !== undefined) {
+              console.log(`Found direct match for ${exactName}: ${propertyData.last_value}`);
+              sensorData[exactName] = propertyData.last_value;
+            } else if (prop.last_value !== undefined) {
+              console.log(`Using property last_value for ${exactName}: ${prop.last_value}`);
+              sensorData[exactName] = prop.last_value;
+            }
+          } catch (error) {
+            console.warn(`Error getting value for direct property ${exactName}:`, error);
+          }
+        }
+      }
+      
+      // Log what we've found so far
+      console.log('Values after direct property matching:', sensorData);
+      
+      // Secondary approach: fallback to the more generic approach
       // Loop through each property and try to get its current value
       for (const prop of properties) {
         try {
           const propId = prop.id;
           const propName = prop.variable_name?.toLowerCase() || prop.name.toLowerCase();
           
-          // Skip properties without valid names
-          if (!propName) continue;
+          // Skip properties without valid names or already processed
+          if (!propName || sensorData[prop.variable_name || ''] !== undefined) continue;
           
-          // Try to get the real-time value
+          // Get detailed property data to ensure we have the latest value
           const propertyData = await this.getPropertyValue(thingId, propId);
           console.log(`Property ${propName} data:`, propertyData);
           
-          if (propertyData && propertyData.last_value !== undefined) {
-            sensorData[propName] = propertyData.last_value;
-          } else if (prop.last_value !== undefined) {
-            sensorData[propName] = prop.last_value;
-          } else if (prop.value !== undefined) {
-            sensorData[propName] = prop.value;
+          // Try multiple paths to get the value, based on different API response formats
+          let propertyValue = undefined;
+          
+          // First try to get from property data returned from API call
+          if (propertyData) {
+            // Direct last_value is the most reliable if available
+            if (propertyData.last_value !== undefined) {
+              propertyValue = propertyData.last_value;
+            // Try value field next
+            } else if (propertyData.value !== undefined) {
+              propertyValue = propertyData.value;
+            // Try current_value if it exists
+            } else if (propertyData.current_value !== undefined) {
+              propertyValue = propertyData.current_value;
+            }
+          }
+          
+          // If we couldn't get a value from property data, fall back to original property
+          if (propertyValue === undefined) {
+            if (prop.last_value !== undefined) {
+              propertyValue = prop.last_value;
+            } else if (prop.value !== undefined) {
+              propertyValue = prop.value;
+            }
+          }
+          
+          // Only assign if we actually found a value
+          if (propertyValue !== undefined) {
+            sensorData[propName] = propertyValue;
+            console.log(`Got value for ${propName}: ${propertyValue}`);
+          } else {
+            console.log(`No value found for ${propName}`);
           }
         } catch (error) {
           console.warn(`Could not get value for property ${prop.name}:`, error);
@@ -411,6 +675,136 @@ export class ArduinoCloudClient {
       return {};
     }
   }
+
+  /**
+   * Get the most recent sensor values directly from Arduino Cloud for a specific thing
+   * This bypasses all caching and property mapping to get exactly what's shown in the Arduino Cloud UI
+   */
+  async getLatestValues(thingId: string): Promise<Record<string, any>> {
+    console.log(`Directly fetching latest values from Arduino Cloud for Thing ID: ${thingId}`);
+    
+    try {
+      // First, get the thing's full details to see all properties
+      const thing = await this.request(`/v1/things/${thingId}`);
+      console.log(`Got thing details:`, thing);
+      
+      if (!thing || !thing.properties) {
+        console.warn('No properties found in thing details');
+        return {};
+      }
+      
+      const propertyValues: Record<string, any> = {};
+      
+      // Get values for each property directly from the property endpoint
+      for (const prop of thing.properties) {
+        if (!prop.id || !prop.name) continue;
+        
+        try {
+          // Make a separate request for each property to get the freshest data
+          const propertyData = await this.request(`/v1/things/${thingId}/properties/${prop.id}`);
+          
+          if (propertyData) {
+            console.log(`Raw property data for ${prop.name}:`, propertyData);
+            
+            // Find the latest value - try all possible field names
+            const value = propertyData.last_value ?? propertyData.value ?? propertyData.current_value;
+            
+            if (value !== undefined && value !== null) {
+              // Store using the exact property name from Arduino Cloud
+              propertyValues[prop.name] = value;
+              console.log(`Got fresh value for ${prop.name}: ${value}`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching property ${prop.name}:`, error);
+        }
+      }
+      
+      if (Object.keys(propertyValues).length === 0) {
+        console.warn('No property values found after querying all properties');
+      } else {
+        console.log('Final collection of values:', propertyValues);
+      }
+      
+      return propertyValues;
+    } catch (error) {
+      console.error('Error fetching latest values:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all properties for a device
+   */
+  async getAllDeviceProperties(customThingId?: string): Promise<any> {
+    const thingId = customThingId || this.thingId;
+    
+    if (!thingId) {
+      throw new Error('No Thing ID provided. Please set a Thing ID using setThingId or pass a customThingId parameter.');
+    }
+    
+    const endpoint = `/v1/things/${thingId}/properties`;
+    console.log(`Getting all properties using endpoint: ${endpoint}`);
+    
+    return this.request(endpoint);
+  }
+
+  /**
+   * Get device information
+   */
+  async getDeviceInfo(customThingId?: string): Promise<any> {
+    const thingId = customThingId || this.thingId;
+    
+    if (!thingId) {
+      throw new Error('No Thing ID provided. Please set a Thing ID using setThingId or pass a customThingId parameter.');
+    }
+    
+    const endpoint = `/v1/things/${thingId}`;
+    
+    return this.request(endpoint);
+  }
+
+  /**
+   * List all Things accessible to the user
+   */
+  async listThings(): Promise<any> {
+    console.log('Listing all things using endpoint: /v1/things');
+    return this.request('/v1/things');
+  }
+
+  /**
+   * Get a device property value
+   */
+  async getDeviceProperty(propertyName: string, customThingId?: string): Promise<any> {
+    const thingId = customThingId || this.thingId;
+    
+    if (!thingId) {
+      throw new Error('No Thing ID provided. Please set a Thing ID using setThingId or pass a customThingId parameter.');
+    }
+    
+    const endpoint = `/v1/things/${thingId}/properties/${propertyName}`;
+    
+    const response = await this.request(endpoint);
+    return response.last_value;
+  }
+
+  /**
+   * Create a webhook to receive real-time property updates
+   */
+  async createWebhook(callbackUrl: string, customThingId?: string): Promise<any> {
+    const thingId = customThingId || this.thingId;
+    
+    if (!thingId) {
+      throw new Error('No Thing ID provided. Please set a Thing ID using setThingId or pass a customThingId parameter.');
+    }
+    
+    const endpoint = `/things/${thingId}/callback`;
+    
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify({ callback_url: callbackUrl })
+    });
+  }
 }
 
 /**
@@ -420,10 +814,21 @@ export function createArduinoCloudClient(): ArduinoCloudClient | null {
   const clientId = process.env.ARDUINO_CLOUD_CLIENT_ID;
   const clientSecret = process.env.ARDUINO_CLOUD_CLIENT_SECRET;
   
-  if (!clientId || !clientSecret) {
-    console.error('Arduino Cloud credentials not configured');
+  if (!clientId) {
+    console.error('❌ ARDUINO_CLOUD_CLIENT_ID not configured in environment variables');
     return null;
   }
   
-  return new ArduinoCloudClient(clientId as string, clientSecret as string);
+  if (!clientSecret) {
+    console.error('❌ ARDUINO_CLOUD_CLIENT_SECRET not configured in environment variables');
+    return null;
+  }
+  
+  try {
+    console.log('Creating Arduino Cloud client with credentials');
+    return new ArduinoCloudClient(clientId, clientSecret, '');
+  } catch (error) {
+    console.error('Failed to create Arduino Cloud client:', error);
+    return null;
+  }
 } 
