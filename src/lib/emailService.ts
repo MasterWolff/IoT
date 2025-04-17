@@ -30,12 +30,29 @@ export interface AlertInfo {
 }
 
 export async function sendAlertEmail(alert: AlertInfo): Promise<boolean> {
+  console.log('📧 EMAIL SERVICE: Attempting to send alert email for', {
+    paintingName: alert.paintingName,
+    measurementType: alert.measurement.type,
+    value: alert.measurement.value,
+    timestamp: alert.timestamp
+  });
+  
   // Check if email is configured
   if (!isEmailConfigured()) {
-    console.error('Email configuration is incomplete. Cannot send alert email.');
+    console.error('📧 EMAIL SERVICE: Email configuration is incomplete. Cannot send alert email.');
+    console.error('📧 EMAIL SERVICE: Missing email configuration values:', {
+      host: !!emailConfig.smtp.host,
+      port: !!emailConfig.smtp.port,
+      authUser: !!emailConfig.smtp.auth.user,
+      authPass: !!emailConfig.smtp.auth.pass,
+      from: !!emailConfig.from,
+      recipients: emailConfig.alertRecipients.length > 0
+    });
     return false;
   }
 
+  console.log('📧 EMAIL SERVICE: Email configuration is valid');
+  
   // Check for rate limiting - don't send too many emails for the same painting
   const now = new Date();
   const lastSent = lastAlertSent[alert.paintingId];
@@ -44,22 +61,32 @@ export async function sendAlertEmail(alert: AlertInfo): Promise<boolean> {
   if (lastSent) {
     const minutesSinceLastAlert = (now.getTime() - lastSent.getTime()) / (1000 * 60);
     if (minutesSinceLastAlert < thresholdMinutes) {
-      console.log(`Skipping alert email for ${alert.paintingName}: last email was sent ${minutesSinceLastAlert.toFixed(1)} minutes ago`);
+      console.log(`📧 EMAIL SERVICE: Skipping alert email for ${alert.paintingName}: last email was sent ${minutesSinceLastAlert.toFixed(1)} minutes ago (threshold: ${thresholdMinutes} minutes)`);
       return false;
     }
   }
 
+  console.log('📧 EMAIL SERVICE: Email not rate-limited, proceeding with sending');
+  
   try {
     // Create a transporter
+    console.log('📧 EMAIL SERVICE: Creating email transporter with config:', {
+      host: emailConfig.smtp.host,
+      port: emailConfig.smtp.port,
+      secure: emailConfig.smtp.secure,
+      user: emailConfig.smtp.auth.user ? '(set)' : '(not set)',
+      pass: emailConfig.smtp.auth.pass ? '(set)' : '(not set)'
+    });
+    
     const transporter = nodemailer.createTransport(emailConfig.smtp);
     
     // Verify connection configuration
     try {
-      console.log('Verifying email connection...');
+      console.log('📧 EMAIL SERVICE: Verifying email connection...');
       await transporter.verify();
-      console.log('Email connection verified successfully');
+      console.log('📧 EMAIL SERVICE: Email connection verified successfully');
     } catch (verifyError) {
-      console.error('Email connection verification failed:', verifyError);
+      console.error('📧 EMAIL SERVICE: Email connection verification failed:', verifyError);
       throw verifyError;
     }
 
@@ -86,6 +113,10 @@ export async function sendAlertEmail(alert: AlertInfo): Promise<boolean> {
     
     // Compose email subject
     const subject = `ALERT: ${alertType.toUpperCase()} ${alert.measurement.type} for "${alert.paintingName}"`;
+    
+    // Log email recipients
+    console.log('📧 EMAIL SERVICE: Sending email to recipients:', emailConfig.alertRecipients);
+    console.log('📧 EMAIL SERVICE: Email subject:', subject);
     
     // Compose email body
     const htmlBody = `
@@ -140,25 +171,43 @@ export async function sendAlertEmail(alert: AlertInfo): Promise<boolean> {
     `;
     
     // Send email
-    const result = await transporter.sendMail({
-      from: emailConfig.from,
-      to: emailConfig.alertRecipients.join(','),
-      subject,
-      text: textBody,
-      html: htmlBody,
-    });
-    
-    console.log(`Alert email sent: ${result.messageId}`);
-    
-    // Record the email sent time to avoid spamming
-    lastAlertSent[alert.paintingId] = now;
-    
-    // Also store this alert in the database for record-keeping
-    await recordAlertNotification(alert);
-    
-    return true;
+    console.log('📧 EMAIL SERVICE: Attempting to send email now...');
+    try {
+      const result = await transporter.sendMail({
+        from: emailConfig.from,
+        to: emailConfig.alertRecipients.join(','),
+        subject,
+        text: textBody,
+        html: htmlBody,
+      });
+      
+      console.log(`📧 EMAIL SERVICE: Alert email sent successfully: ${result.messageId}`);
+      console.log('📧 EMAIL SERVICE: Email delivery info:', result.response);
+      
+      // Record the email sent time to avoid spamming
+      lastAlertSent[alert.paintingId] = now;
+      
+      // Also store this alert in the database for record-keeping
+      await recordAlertNotification(alert);
+      console.log(`📧 EMAIL SERVICE: Alert notification recorded in database for ${alert.paintingName}`);
+      
+      return true;
+    } catch (sendError) {
+      console.error('📧 EMAIL SERVICE: Failed to send email:', sendError);
+      if (sendError instanceof Error) {
+        console.error('📧 EMAIL SERVICE: Error details:', sendError.message);
+        if ('code' in sendError) {
+          console.error('📧 EMAIL SERVICE: Error code:', (sendError as any).code);
+        }
+      }
+      return false;
+    }
   } catch (error) {
-    console.error('Failed to send alert email:', error);
+    console.error('📧 EMAIL SERVICE: Failed during email preparation:', error);
+    if (error instanceof Error) {
+      console.error('📧 EMAIL SERVICE: Error message:', error.message);
+      console.error('📧 EMAIL SERVICE: Error stack:', error.stack);
+    }
     return false;
   }
 }

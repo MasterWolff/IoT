@@ -100,15 +100,12 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           
           console.log('Using filename for storage:', fileName);
           
-          const { data: publicUrl } = supabase
-            .storage
-            .from('painting-images')
-            .getPublicUrl(fileName || '');
+          // Instead of relying on Supabase's URL, construct it manually to avoid encoding issues
+          const baseUrl = "https://jyeoknizfpnklmirqpez.supabase.co/storage/v1/object/public/painting-images/";
+          const imageUrl = baseUrl + encodeURIComponent(fileName || '');
           
-          // Clean the URL by removing any potential whitespace or newlines
-          const cleanUrl = publicUrl.publicUrl.replace(/\s|\n|\r/g, '');
-          console.log('Generated public URL:', cleanUrl);
-          setImageUrl(cleanUrl);
+          console.log('Generated public URL:', imageUrl);
+          setImageUrl(imageUrl);
         }
 
         // Fetch alerts for this painting

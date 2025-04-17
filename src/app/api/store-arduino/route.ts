@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { mapArduinoToDatabaseProperties } from '@/lib/propertyMapper';
 import { processEnvironmentalData, AlertRecord } from '@/lib/alertService';
+import { checkAlertsAndNotify } from '@/lib/api';
 
 // Store Arduino data with exact column names from the database
 export async function POST(request: Request) {
@@ -167,6 +168,31 @@ export async function POST(request: Request) {
       console.error('❌ STORE-ARDUINO: Error processing alerts:', alertError);
     }
     
+    // Check and notify about alerts
+    let emailAlerts = {
+      checked: false,
+      emailsSent: 0,
+      alertsCount: 0
+    };
+    
+    try {
+      console.log('🔔 STORE-ARDUINO: Checking and notifying about alerts');
+      const result = await checkAlertsAndNotify();
+      
+      if (result.success) {
+        emailAlerts = {
+          checked: true,
+          emailsSent: result.emailsSent || 0,
+          alertsCount: result.alertsCount || 0
+        };
+        console.log(`🔔 STORE-ARDUINO: Email alert check complete - ${emailAlerts.emailsSent} emails sent`);
+      } else {
+        console.error('❌ STORE-ARDUINO: Alert check failed:', result.error);
+      }
+    } catch (checkError) {
+      console.error('❌ STORE-ARDUINO: Error checking and notifying about alerts:', checkError);
+    }
+    
     // Return data with alert information
     return NextResponse.json({
       success: true,
@@ -177,7 +203,8 @@ export async function POST(request: Request) {
         count: alerts.length,
         hasAlerts: alerts.length > 0,
         alertDetails: alerts
-      }
+      },
+      emailAlerts
     });
     
   } catch (error) {
