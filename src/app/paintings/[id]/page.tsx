@@ -91,11 +91,21 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
 
         // Get public URL for the image if image_path exists
         if (data.image_path) {
-          const fileName = data.image_path.split('/').pop(); // Get just the filename
+          console.log('Image path from database:', data.image_path);
+          
+          // Extract the filename from the path, handling both formats:
+          // "painting-images/Filename.jpg" or just "Filename.jpg"
+          const pathParts = data.image_path.split('/');
+          const fileName = pathParts[pathParts.length - 1];
+          
+          console.log('Extracted filename for storage:', fileName);
+          
           const { data: publicUrl } = supabase
             .storage
             .from('painting-images')
-            .getPublicUrl(fileName || '');
+            .getPublicUrl(fileName);
+          
+          console.log('Generated public URL:', publicUrl.publicUrl);
           setImageUrl(publicUrl.publicUrl);
         }
 
