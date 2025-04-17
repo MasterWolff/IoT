@@ -1,6 +1,6 @@
 "use client"
 
-import { Line, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Line, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from "recharts"
 
 interface LineChartProps {
   data: any[]
@@ -9,6 +9,14 @@ interface LineChartProps {
   colors?: string[]
   className?: string
   valueFormatter?: (value: number) => string
+  customTooltip?: React.FC<any>
+  referenceLines?: Array<{
+    y: number
+    label?: string
+    color?: string
+    strokeDasharray?: string
+  }>
+  yAxisProps?: Partial<any>
 }
 
 export function LineChart({
@@ -18,6 +26,9 @@ export function LineChart({
   colors = ["#2563eb"],
   className,
   valueFormatter = (value: number) => `${value}`,
+  customTooltip,
+  referenceLines = [],
+  yAxisProps = {},
 }: LineChartProps) {
   return (
     <ResponsiveContainer width="100%" height="100%" className={className}>
@@ -35,9 +46,10 @@ export function LineChart({
           tickLine={false}
           axisLine={false}
           tickFormatter={valueFormatter}
+          {...yAxisProps}
         />
         <Tooltip
-          content={({ active, payload }) => {
+          content={customTooltip ? customTooltip : ({ active, payload }) => {
             if (active && payload && payload.length) {
               return (
                 <div className="rounded-lg border bg-background p-2 shadow-sm">
@@ -67,6 +79,20 @@ export function LineChart({
             return null
           }}
         />
+        {referenceLines.map((line, index) => (
+          <ReferenceLine
+            key={`ref-line-${index}`}
+            y={line.y}
+            stroke={line.color || "#888888"}
+            strokeDasharray={line.strokeDasharray || "3 3"}
+            label={line.label ? {
+              position: "right",
+              value: line.label,
+              fill: line.color || "#888888",
+              fontSize: 12,
+            } : undefined}
+          />
+        ))}
         {categories.map((category, i) => (
           <Line
             key={category}

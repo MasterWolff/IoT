@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button";
+import { LineChartProps } from '@tremor/react';
 
 interface PaintingDetails extends Painting {
   painting_materials: Array<{
@@ -33,6 +34,16 @@ interface PaintingDetails extends Painting {
     materials: {
       name: string;
       description: string | null;
+      threshold_temperature_lower?: number | null;
+      threshold_temperature_upper?: number | null;
+      threshold_humidity_lower?: number | null;
+      threshold_humidity_upper?: number | null;
+      threshold_co2concentration_lower?: number | null;
+      threshold_co2concentration_upper?: number | null;
+      threshold_illuminance_lower?: number | null;
+      threshold_illuminance_upper?: number | null;
+      threshold_moldrisklevel_lower?: number | null;
+      threshold_moldrisklevel_upper?: number | null;
     };
   }>;
   environmental_data: Array<{
@@ -66,6 +77,16 @@ interface Alert {
   updated_at: string | null;
   dismissed_at: string | null;
 }
+
+type ChartTooltipProps = {
+  payload?: Array<{
+    value: number;
+    name?: string;
+    color?: string;
+  }>;
+  active?: boolean;
+  label?: string;
+};
 
 export default function PaintingDetailsPage({ params }: { params: { id: string } }) {
   const paintingId = params.id;
@@ -254,6 +275,69 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     const lastTime = format(lastDatapoint, 'HH:mm:ss');
     
     return `${firstTime} - ${lastTime}`;
+  };
+
+  // Get thresholds from painting materials
+  const getThresholds = (type: string) => {
+    if (!painting || !painting.painting_materials || painting.painting_materials.length === 0) {
+      return null;
+    }
+
+    // Look at all materials and get the most restrictive thresholds
+    let lowerThreshold: number | null = null;
+    let upperThreshold: number | null = null;
+
+    painting.painting_materials.forEach(pm => {
+      const material = pm.materials;
+      
+      // Map chart type to material threshold fields
+      let lowerField: string;
+      let upperField: string;
+      
+      switch (type) {
+        case 'Temperature':
+          lowerField = 'threshold_temperature_lower';
+          upperField = 'threshold_temperature_upper';
+          break;
+        case 'Humidity':
+          lowerField = 'threshold_humidity_lower';
+          upperField = 'threshold_humidity_upper';
+          break;
+        case 'CO2':
+          lowerField = 'threshold_co2concentration_lower';
+          upperField = 'threshold_co2concentration_upper';
+          break;
+        case 'Illumination':
+          lowerField = 'threshold_illuminance_lower';
+          upperField = 'threshold_illuminance_upper';
+          break;
+        case 'Mold Risk':
+          lowerField = 'threshold_moldrisklevel_lower';
+          upperField = 'threshold_moldrisklevel_upper';
+          break;
+        default:
+          return null;
+      }
+      
+      // Get thresholds from this material
+      const materialLower = material[lowerField as keyof typeof material] as number | null;
+      const materialUpper = material[upperField as keyof typeof material] as number | null;
+      
+      // Update most restrictive thresholds
+      if (materialLower !== null) {
+        if (lowerThreshold === null || materialLower > lowerThreshold) {
+          lowerThreshold = materialLower;
+        }
+      }
+      
+      if (materialUpper !== null) {
+        if (upperThreshold === null || materialUpper < upperThreshold) {
+          upperThreshold = materialUpper;
+        }
+      }
+    });
+    
+    return { lower: lowerThreshold, upper: upperThreshold };
   };
 
   return (
@@ -485,6 +569,23 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       <div className="w-full border-0 p-0 bg-white">
                         <h3 className="text-lg font-medium text-slate-800">Temperature Over Time</h3>
                         <p className="text-sm text-slate-500">Measured in °C</p>
+                        
+                        {/* Add threshold badges if available */}
+                        {getThresholds('Temperature') && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {getThresholds('Temperature')?.lower !== null && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                Min: {getThresholds('Temperature')?.lower}°C
+                              </Badge>
+                            )}
+                            {getThresholds('Temperature')?.upper !== null && (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                Max: {getThresholds('Temperature')?.upper}°C
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
                         <div className="h-[400px] mt-4">
                           <LineChart
                             data={filteredChartData}
@@ -493,6 +594,54 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                             colors={["orange"]}
                             valueFormatter={(value) => `${value.toFixed(1)}°C`}
                             className="h-full w-full"
+                            customTooltip={({ payload }: ChartTooltipProps) => {
+                              if (payload && payload.length > 0) {
+                                const temperature = payload[0].value as number;
+                                const thresholds = getThresholds('Temperature');
+                                let statusBadge = <></>;
+                                
+                                if (thresholds) {
+                                  if (thresholds.lower !== null && temperature < thresholds.lower) {
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                  } else if (thresholds.upper !== null && temperature > thresholds.upper) {
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                  } else {
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                  }
+                                }
+                                
+                                return (
+                                  <div className="bg-white p-2 border rounded shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">Temperature:</span>
+                                      <span>{temperature.toFixed(1)}°C {statusBadge}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            referenceLines={(() => {
+                              const lines = [];
+                              const thresholds = getThresholds('Temperature');
+                              if (thresholds?.lower !== null && thresholds?.lower !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.lower),
+                                  label: `Min: ${thresholds.lower}°C`,
+                                  color: "blue",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              if (thresholds?.upper !== null && thresholds?.upper !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.upper),
+                                  label: `Max: ${thresholds.upper}°C`,
+                                  color: "red",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              return lines;
+                            })()}
                           />
                         </div>
                       </div>
@@ -508,6 +657,23 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       <div className="w-full border-0 p-0 bg-white">
                         <h3 className="text-lg font-medium text-slate-800">Humidity Over Time</h3>
                         <p className="text-sm text-slate-500">Measured in %</p>
+                        
+                        {/* Add threshold badges if available */}
+                        {getThresholds('Humidity') && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {getThresholds('Humidity')?.lower !== null && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                Min: {getThresholds('Humidity')?.lower}%
+                              </Badge>
+                            )}
+                            {getThresholds('Humidity')?.upper !== null && (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                Max: {getThresholds('Humidity')?.upper}%
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
                         <div className="h-[400px] mt-4">
                           <LineChart
                             data={filteredChartData}
@@ -516,6 +682,54 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                             colors={["blue"]}
                             valueFormatter={(value) => `${value.toFixed(1)}%`}
                             className="h-full w-full"
+                            customTooltip={({ payload }: ChartTooltipProps) => {
+                              if (payload && payload.length > 0) {
+                                const humidity = payload[0].value as number;
+                                const thresholds = getThresholds('Humidity');
+                                let statusBadge = <></>;
+                                
+                                if (thresholds) {
+                                  if (thresholds.lower !== null && humidity < thresholds.lower) {
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                  } else if (thresholds.upper !== null && humidity > thresholds.upper) {
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                  } else {
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                  }
+                                }
+                                
+                                return (
+                                  <div className="bg-white p-2 border rounded shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">Humidity:</span>
+                                      <span>{humidity.toFixed(1)}% {statusBadge}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            referenceLines={(() => {
+                              const lines = [];
+                              const thresholds = getThresholds('Humidity');
+                              if (thresholds?.lower !== null && thresholds?.lower !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.lower),
+                                  label: `Min: ${thresholds.lower}%`,
+                                  color: "blue",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              if (thresholds?.upper !== null && thresholds?.upper !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.upper),
+                                  label: `Max: ${thresholds.upper}%`,
+                                  color: "red",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              return lines;
+                            })()}
                           />
                         </div>
                       </div>
@@ -531,6 +745,23 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       <div className="w-full border-0 p-0 bg-white">
                         <h3 className="text-lg font-medium text-slate-800">CO₂ Levels Over Time</h3>
                         <p className="text-sm text-slate-500">Measured in ppm</p>
+                        
+                        {/* Add threshold badges if available */}
+                        {getThresholds('CO2') && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {getThresholds('CO2')?.lower !== null && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                Min: {getThresholds('CO2')?.lower} ppm
+                              </Badge>
+                            )}
+                            {getThresholds('CO2')?.upper !== null && (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                Max: {getThresholds('CO2')?.upper} ppm
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
                         <div className="h-[400px] mt-4">
                           <LineChart
                             data={filteredChartData}
@@ -539,6 +770,54 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                             colors={["green"]}
                             valueFormatter={(value) => `${value.toFixed(0)} ppm`}
                             className="h-full w-full"
+                            customTooltip={({ payload }: ChartTooltipProps) => {
+                              if (payload && payload.length > 0) {
+                                const co2 = payload[0].value as number;
+                                const thresholds = getThresholds('CO2');
+                                let statusBadge = <></>;
+                                
+                                if (thresholds) {
+                                  if (thresholds.lower !== null && co2 < thresholds.lower) {
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                  } else if (thresholds.upper !== null && co2 > thresholds.upper) {
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                  } else {
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                  }
+                                }
+                                
+                                return (
+                                  <div className="bg-white p-2 border rounded shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">CO₂:</span>
+                                      <span>{co2.toFixed(0)} ppm {statusBadge}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            referenceLines={(() => {
+                              const lines = [];
+                              const thresholds = getThresholds('CO2');
+                              if (thresholds?.lower !== null && thresholds?.lower !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.lower),
+                                  label: `Min: ${thresholds.lower} ppm`,
+                                  color: "blue",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              if (thresholds?.upper !== null && thresholds?.upper !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.upper),
+                                  label: `Max: ${thresholds.upper} ppm`,
+                                  color: "red",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              return lines;
+                            })()}
                           />
                         </div>
                       </div>
@@ -554,6 +833,23 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       <div className="w-full border-0 p-0 bg-white">
                         <h3 className="text-lg font-medium text-slate-800">Light Levels Over Time</h3>
                         <p className="text-sm text-slate-500">Measured in lux</p>
+                        
+                        {/* Add threshold badges if available */}
+                        {getThresholds('Illumination') && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {getThresholds('Illumination')?.lower !== null && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                Min: {getThresholds('Illumination')?.lower} lux
+                              </Badge>
+                            )}
+                            {getThresholds('Illumination')?.upper !== null && (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                Max: {getThresholds('Illumination')?.upper} lux
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
                         <div className="h-[400px] mt-4">
                           <LineChart
                             data={filteredChartData}
@@ -562,6 +858,54 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                             colors={["#FFC107"]}
                             valueFormatter={(value) => `${value.toFixed(1)} lux`}
                             className="h-full w-full"
+                            customTooltip={({ payload }: ChartTooltipProps) => {
+                              if (payload && payload.length > 0) {
+                                const illumination = payload[0].value as number;
+                                const thresholds = getThresholds('Illumination');
+                                let statusBadge = <></>;
+                                
+                                if (thresholds) {
+                                  if (thresholds.lower !== null && illumination < thresholds.lower) {
+                                    statusBadge = <Badge className="ml-2 bg-blue-100 text-blue-800">Too Low</Badge>;
+                                  } else if (thresholds.upper !== null && illumination > thresholds.upper) {
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">Too High</Badge>;
+                                  } else {
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">OK</Badge>;
+                                  }
+                                }
+                                
+                                return (
+                                  <div className="bg-white p-2 border rounded shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">Illumination:</span>
+                                      <span>{illumination.toFixed(1)} lux {statusBadge}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            referenceLines={(() => {
+                              const lines = [];
+                              const thresholds = getThresholds('Illumination');
+                              if (thresholds?.lower !== null && thresholds?.lower !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.lower),
+                                  label: `Min: ${thresholds.lower} lux`,
+                                  color: "blue",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              if (thresholds?.upper !== null && thresholds?.upper !== undefined) {
+                                lines.push({
+                                  y: Number(thresholds.upper),
+                                  label: `Max: ${thresholds.upper} lux`,
+                                  color: "red",
+                                  strokeDasharray: "4 4"
+                                });
+                              }
+                              return lines;
+                            })()}
                           />
                         </div>
                       </div>
@@ -600,14 +944,81 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                       <div className="w-full border-0 p-0 bg-white">
                         <h3 className="text-lg font-medium text-slate-800">Mold Risk Level Over Time</h3>
                         <p className="text-sm text-slate-500">Risk index</p>
+                        
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            Level 0: Safe
+                          </Badge>
+                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                            Level 1: Low Risk
+                          </Badge>
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                            Level 2: Medium Risk
+                          </Badge>
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                            Level 3: High Risk
+                          </Badge>
+                        </div>
+                        
                         <div className="h-[400px] mt-4">
                           <LineChart
                             data={filteredChartData}
                             categories={["Mold Risk"]}
                             index="time"
-                            colors={["brown"]}
-                            valueFormatter={(value) => `${value.toFixed(1)}`}
+                            colors={["#8B4513"]} 
+                            valueFormatter={(value: number) => `Level ${Math.round(value)}`}
                             className="h-full w-full"
+                            customTooltip={({ payload }: ChartTooltipProps) => {
+                              if (payload && payload.length > 0) {
+                                const moldRisk = Math.round(payload[0].value as number);
+                                let statusBadge = <></>;
+                                let statusText = "";
+                                
+                                switch(moldRisk) {
+                                  case 0:
+                                    statusBadge = <Badge className="ml-2 bg-green-100 text-green-800">Safe</Badge>;
+                                    statusText = "Safe";
+                                    break;
+                                  case 1:
+                                    statusBadge = <Badge className="ml-2 bg-yellow-100 text-yellow-800">Low Risk</Badge>;
+                                    statusText = "Low Risk";
+                                    break;
+                                  case 2:
+                                    statusBadge = <Badge className="ml-2 bg-orange-100 text-orange-800">Medium Risk</Badge>;
+                                    statusText = "Medium Risk";
+                                    break;
+                                  case 3:
+                                  default:
+                                    statusBadge = <Badge className="ml-2 bg-red-100 text-red-800">High Risk</Badge>;
+                                    statusText = "High Risk";
+                                    break;
+                                }
+                                
+                                return (
+                                  <div className="bg-white p-2 border rounded shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">Mold Risk:</span>
+                                      <span>Level {moldRisk} {statusBadge}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            referenceLines={[
+                              {
+                                y: 1,
+                                label: "Risk Threshold",
+                                color: "#FFA500",
+                                strokeDasharray: "4 4"
+                              }
+                            ]}
+                            yAxisProps={{
+                              allowDecimals: false,
+                              domain: [0, 3],
+                              ticks: [0, 1, 2, 3],
+                              tickFormatter: (value: number) => `Level ${value}`
+                            }}
                           />
                         </div>
                       </div>
