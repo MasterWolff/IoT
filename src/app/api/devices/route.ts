@@ -8,6 +8,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const paintingId = searchParams.get('paintingId');
     const status = searchParams.get('status');
+    const arduinoId = searchParams.get('arduinoId'); // Get Arduino thing ID from query params
+    
+    console.log('DEVICES API REQUEST:', {
+      paintingId,
+      status,
+      arduinoId,
+      url: request.url
+    });
     
     // Start building the query
     let query = supabase
@@ -23,6 +31,12 @@ export async function GET(request: Request) {
       query = query.eq('status', status);
     }
     
+    // If Arduino thing ID is provided, search for it specifically
+    if (arduinoId) {
+      query = query.eq('arduino_thing_id', arduinoId);
+      console.log(`Looking for device with arduino_thing_id = ${arduinoId}`);
+    }
+    
     const { data, error } = await query;
     
     if (error) {
@@ -32,6 +46,19 @@ export async function GET(request: Request) {
         { status: 500 }
       );
     }
+    
+    // Log the results for debugging
+    console.log('DEVICES API RESPONSE:', {
+      deviceCount: data.length,
+      hasArduinoId: !!arduinoId,
+      arduinoId,
+      foundMatches: data.map(d => ({
+        id: d.id,
+        name: d.name,
+        arduino_thing_id: d.arduino_thing_id,
+        painting_id: d.painting_id
+      }))
+    });
     
     return NextResponse.json({
       success: true,

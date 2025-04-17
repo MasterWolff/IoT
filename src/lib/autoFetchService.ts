@@ -227,6 +227,14 @@ export const useAutoFetchStore = create<AutoFetchState>()(
                   
                   // Create a data item with the thing and its properties
                   const fetchTimestamp = new Date().toISOString();
+                  
+                  // Debug log for painting ID mapping issue
+                  console.log('DIAGNOSTIC: Creating data item with painting name:', {
+                    thingName: things[0].name,
+                    paintingNameAssignment: 'Should be mapping to a real painting ID from database here',
+                    thingId: thingId
+                  });
+                  
                   const dataItem: DataItem = {
                     id: crypto.randomUUID(),
                     timestamp: fetchTimestamp,
@@ -247,8 +255,118 @@ export const useAutoFetchStore = create<AutoFetchState>()(
                     statusMessage: `Successfully fetched data for Thing: ${things[0].name || thingId}`
                   });
                   
+                  // Send data to the database via store-arduino endpoint
+                  try {
+                    console.log('Storing fetched data in database...');
+                    
+                    // Fetch devices directly from the API
+                    const deviceResponse = await fetch('/api/devices');
+                    const deviceData = await deviceResponse.json();
+                    
+                    console.log('DEVICE LOOKUP DEBUG:', {
+                      allDevicesCount: deviceData.devices?.length || 0,
+                      arduinoThingId: thingId
+                    });
+                    
+                    if (deviceData.success && deviceData.devices && deviceData.devices.length > 0) {
+                      // Find the device that matches our Arduino thing ID - use exact match
+                      const matchingDevice = deviceData.devices.find(
+                        (device: any) => device.arduino_thing_id === thingId
+                      );
+                      
+                      if (matchingDevice) {
+                        // We found a device matching this Arduino thing ID
+                        const deviceId = matchingDevice.id;
+                        const paintingId = matchingDevice.painting_id;
+                        
+                        console.log(`✅ MATCH FOUND: Device ID: ${deviceId} for Arduino Thing ID: ${thingId}`);
+                        console.log(`✅ Using painting ID: ${paintingId} (${matchingDevice.paintings?.name || 'Unknown'})`);
+                        
+                        // Store environmental data using proper IDs
+                        console.log('💾 Storing data with correct device and painting IDs:', {
+                          arduino_thing_id: thingId,
+                          device_id: deviceId,
+                          painting_id: paintingId
+                        });
+                        
+                        // Make the API call to store data
+                        const storeResponse = await fetch('/api/store-arduino', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({
+                            device_id: deviceId,  // Use the actual device ID, not the Arduino thing ID
+                            painting_id: paintingId,
+                            data: properties.map((prop: { variable_name: string; last_value: any }) => ({
+                              variable_name: prop.variable_name,
+                              value: prop.last_value
+                            }))
+                          })
+                        });
+                        
+                        // Check if the request was successful
+                        if (!storeResponse.ok) {
+                          const errorText = await storeResponse.text();
+                          console.error(`❌ SERVER ERROR: ${storeResponse.status}`, {
+                            responseText: errorText
+                          });
+                          throw new Error(`Server error ${storeResponse.status}: ${errorText}`);
+                        }
+                        
+                        const storeResult = await storeResponse.json();
+                        
+                        if (storeResult.success) {
+                          console.log('✅ DATA STORED SUCCESSFULLY:', storeResult);
+                          set({
+                            statusMessage: `Data stored in database for ${things[0].name || thingId}`
+                          });
+                          
+                          // Add a prominent success log message for data storage
+                          console.log('✅ DATABASE STORAGE SUCCESSFUL: Environmental data stored in database', {
+                            device: things[0].name || thingId,
+                            deviceId,
+                            paintingId,
+                            timestamp: new Date().toISOString(),
+                            dataPoints: properties.length
+                          });
+                        } else {
+                          console.error('❌ DATA STORAGE FAILED:', storeResult.error);
+                          set({
+                            statusMessage: `Failed to store data: ${storeResult.error || 'Unknown error'}`
+                          });
+                        }
+                      } else {
+                        console.warn(`❌ No device found with arduino_thing_id: ${thingId}`);
+                        set({
+                          statusMessage: `No device found for Arduino Thing ID: ${thingId}`
+                        });
+                      }
+                    } else {
+                      console.warn('❌ No devices found in the database');
+                      set({
+                        statusMessage: 'No devices found in the database'
+                      });
+                    }
+                  } catch (storeError) {
+                    console.error('❌ Error storing data:', storeError);
+                    set({
+                      statusMessage: `Error storing data: ${storeError instanceof Error ? storeError.message : 'Unknown error'}`
+                    });
+                  }
+                  
                   // Notify data subscribers that new data is available
                   notifyDataUpdate();
+                  
+                  // Add debugging log to check what data we're getting
+                  console.log('DIAGNOSTIC: Successfully fetched data from Arduino Cloud', {
+                    thingId: thingId,
+                    thingName: things[0].name,
+                    propertiesCount: properties.length,
+                    properties: properties,
+                    timestamp: fetchTimestamp,
+                    missingStorageCall: 'Data is fetched but not being sent to store-arduino endpoint'
+                  });
                   
                   // Schedule next fetch
                   if (isRunning && !isPaused) {

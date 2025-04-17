@@ -90,6 +90,14 @@ export default function AutoFetchPage() {
   const fetchData = () => {
     console.log('Refreshing displayed data from store');
     // The data is already in the store, we just need to trigger a re-render
+    
+    // Add diagnostic logging to verify the data that's being displayed
+    console.log('DIAGNOSTIC: Data in store that should be saved to database:', {
+      recentDataCount: useAutoFetchStore.getState().recentData.length,
+      latestDataSample: useAutoFetchStore.getState().recentData[0],
+      missingStep: 'This data is displayed but not sent to store-arduino endpoint'
+    });
+    
     // Force a re-render by updating a state variable without changing the whole page
     setLastRefresh(new Date());
   };
@@ -405,12 +413,27 @@ export default function AutoFetchPage() {
                     // For debugging - log all property names
                     if (index === 0) {
                       console.log('Available properties:', data.properties.map((p: any) => p.variable_name));
+                      
+                      // Debug the painting ID display issue
+                      console.log('DIAGNOSTIC: Painting ID display issue:', {
+                        paintingName: item.paintingName,
+                        dataPaintingName: data.paintingName,
+                        thingId: data.thingId,
+                        thingName: data.thingName,
+                        problem: 'Using thing name instead of actual painting ID from database'
+                      });
                     }
                   }
                   
                   return (
                     <TableRow key={`${index}-${item.id}`}>
-                      <TableCell>{item.paintingName || data.paintingName || "Unknown Painting"}</TableCell>
+                      <TableCell>
+                        {/* Try to find a better painting name or ID to display */}
+                        {localStorage.getItem(`painting_name_${data.thingId}`) || 
+                        (item.paintingName !== data.thingName 
+                          ? item.paintingName 
+                          : "Unknown Painting")}
+                      </TableCell>
                       <TableCell>{data.thingId ? data.thingId.substring(0, 8) : 'N/A'}</TableCell>
                       <TableCell>
                         {renderSensorValue(

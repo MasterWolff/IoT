@@ -74,7 +74,14 @@ export async function GET(req: NextRequest) {
         break;
         
       case 'getAllProperties':
+        console.log('DIAGNOSTIC: getAllProperties called for thing ID:', thingId);
         result = await arduinoClient.getAllDeviceProperties();
+        
+        // Log the properties to check format for database storage
+        console.log('DIAGNOSTIC: Properties retrieved:', {
+          propertiesData: result,
+          missingConnection: 'Here we get properties but don\'t store them in the database'
+        });
         break;
 
       // New action to exactly match Postman call format  
