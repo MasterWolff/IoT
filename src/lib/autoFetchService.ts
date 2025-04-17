@@ -65,8 +65,8 @@ export const useAutoFetchStore = create<AutoFetchState>()(
       // Initial state
       isRunning: false,
       isPaused: false,
-      duration: 5,
-      interval: 5,
+      duration: 60, // Default to 60 minutes
+      interval: 120, // Default to 120 seconds (2 minutes)
       timeRemaining: 0,
       fetchCount: 0,
       successCount: 0,
@@ -490,17 +490,28 @@ export const useAutoFetchStore = create<AutoFetchState>()(
   )
 );
 
-// Utility functions
+// Format time display (seconds to HH:MM:SS or DD:HH:MM:SS for longer periods)
 export function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  if (seconds <= 0) return '00:00:00';
   
-  if (hours > 0) {
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  // Calculate days, hours, minutes, seconds
+  const days = Math.floor(seconds / 86400); // 86400 seconds in a day
+  const remainingSeconds = seconds % 86400;
+  
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const secs = remainingSeconds % 60;
+  
+  // Format with leading zeros
+  const formatNumber = (num: number) => num.toString().padStart(2, '0');
+  
+  // For longer periods, include days
+  if (days > 0) {
+    return `${days}d ${formatNumber(hours)}:${formatNumber(minutes)}:${formatNumber(secs)}`;
   }
   
-  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  // Standard HH:MM:SS format
+  return `${formatNumber(hours)}:${formatNumber(minutes)}:${formatNumber(secs)}`;
 }
 
 export function formatTimestamp(isoString: string | null): string {

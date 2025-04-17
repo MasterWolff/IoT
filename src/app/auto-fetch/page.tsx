@@ -240,11 +240,14 @@ export default function AutoFetchPage() {
                 id="duration" 
                 type="number" 
                 min="1" 
-                max="60" 
                 value={duration} 
                 onChange={(e) => setDuration(Number(e.target.value))}
                 disabled={isRunning}
+                className="text-input-field"
+                inputMode="numeric"
+                placeholder="Enter duration in minutes"
               />
+              <p className="text-xs text-muted-foreground">Enter any value (e.g., 4320 for 3 days)</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="interval">Fetch Interval (seconds)</Label>
@@ -252,11 +255,15 @@ export default function AutoFetchPage() {
                 id="interval" 
                 type="number" 
                 min="5" 
-                max="60" 
+                max="3600" 
                 value={interval} 
                 onChange={(e) => setInterval(Number(e.target.value))}
                 disabled={isRunning}
+                className="text-input-field"
+                inputMode="numeric"
+                placeholder="Enter interval in seconds"
               />
+              <p className="text-xs text-muted-foreground">For 2-minute intervals, enter 120</p>
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">
