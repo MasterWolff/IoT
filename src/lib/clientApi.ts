@@ -25,16 +25,29 @@ export async function getPaintingById(id: string) {
         material_id,
         materials(*)
       ),
-      devices(*),
-      environmental_data(*)
+      devices(*)
     `)
     .eq('id', id)
-    .order('created_at', { foreignTable: 'environmental_data', ascending: true })
     .single();
   
   if (error) {
     console.error('Error fetching painting:', error);
     return null;
+  }
+  
+  // Now fetch the environmental data separately to ensure we get the most recent entries
+  const { data: envData, error: envError } = await supabase
+    .from('environmental_data')
+    .select('*')
+    .eq('painting_id', id)
+    .order('created_at', { ascending: false }); // Remove limit to fetch ALL available data
+  
+  if (envError) {
+    console.error('Error fetching environmental data:', envError);
+  } else if (data) {
+    console.log(`Fetched ${envData?.length || 0} environmental data points`);
+    // Sort the environmental data from oldest to newest for the charts
+    data.environmental_data = envData.reverse();
   }
   
   return data;

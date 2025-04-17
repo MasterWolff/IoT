@@ -109,6 +109,23 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           throw new Error('Painting not found');
         }
         
+        // Log information about the environmental data
+        if (data.environmental_data && data.environmental_data.length > 0) {
+          console.log(`Received ${data.environmental_data.length} environmental data points`);
+          
+          // Sort to find the earliest and latest timestamps
+          const sortedData = [...data.environmental_data].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          
+          const earliestTime = new Date(sortedData[0].created_at);
+          const latestTime = new Date(sortedData[sortedData.length - 1].created_at);
+          
+          console.log(`Data timestamp range: ${earliestTime.toISOString()} to ${latestTime.toISOString()}`);
+        } else {
+          console.log('No environmental data received');
+        }
+        
         setPainting(data as PaintingDetails);
 
         // Get public URL for the image if image_path exists
@@ -169,40 +186,93 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   const chartData = painting.environmental_data?.map(data => ({
     time: format(new Date(data.created_at), 'HH:mm:ss'),
     rawTime: new Date(data.created_at),
-    Temperature: Number(data.temperature) || 0,
-    Humidity: Number(data.humidity) || 0,
-    CO2: Number(data.co2concentration) || 0,
-    'Air Pressure': Number(data.airpressure) || 0,
-    'Mold Risk': Number(data.moldrisklevel) || 0,
-    Illumination: Number(data.illuminance) || 0
+    Temperature: data.temperature !== null ? Number(data.temperature) : null,
+    Humidity: data.humidity !== null ? Number(data.humidity) : null,
+    CO2: data.co2concentration !== null ? Number(data.co2concentration) : null,
+    'Air Pressure': data.airpressure !== null ? Number(data.airpressure) : null,
+    'Mold Risk': data.moldrisklevel !== null ? Number(data.moldrisklevel) : null,
+    Illumination: data.illuminance !== null ? Number(data.illuminance) : null
   })).sort((a, b) => {
     // Sort by time to ensure proper line chart display (oldest to newest)
     return a.rawTime.getTime() - b.rawTime.getTime();
   }) || [];
 
-  // Apply date filter to chart data
+  // Apply date filter to chart data - ensure we always include the most recent data point for each measurement type
   const getFilteredChartData = () => {
-    if (dateFilter === "all") {
-      return chartData;
+    // Always ensure we have the latest measurements regardless of date filter
+    const latestPoints = {
+      Temperature: null as any,
+      Humidity: null as any,
+      CO2: null as any,
+      'Air Pressure': null as any,
+      'Mold Risk': null as any,
+      Illumination: null as any
+    };
+    
+    // Find the latest data point for each measurement type
+    chartData.forEach(point => {
+      Object.keys(latestPoints).forEach(key => {
+        const typedKey = key as keyof typeof latestPoints;
+        if (point[typedKey] !== null) {
+          if (!latestPoints[typedKey] || new Date(point.rawTime) > new Date(latestPoints[typedKey].rawTime)) {
+            latestPoints[typedKey] = point;
+          }
+        }
+      });
+    });
+    
+    // Filter based on date
+    let filtered = chartData;
+    if (dateFilter !== "all") {
+      const today = startOfDay(new Date());
+      const filterDate = dateFilter === "today" 
+        ? today 
+        : subDays(today, 7); // "week"
+      
+      filtered = chartData.filter(data => isAfter(data.rawTime, filterDate));
     }
     
-    const today = startOfDay(new Date());
-    const filterDate = dateFilter === "today" 
-      ? today 
-      : subDays(today, 7); // "week"
+    // Ensure the latest points for each type are included
+    Object.values(latestPoints).forEach(point => {
+      if (point) {
+        // Check if this latest point is already in the filtered data
+        const pointExists = filtered.some(p => 
+          p.rawTime.getTime() === point.rawTime.getTime()
+        );
+        
+        // If not, add it
+        if (!pointExists) {
+          filtered.push(point);
+        }
+      }
+    });
     
-    return chartData.filter(data => isAfter(data.rawTime, filterDate));
+    // Re-sort the combined data
+    return filtered.sort((a, b) => a.rawTime.getTime() - b.rawTime.getTime());
   };
   
   const filteredChartData = getFilteredChartData();
   
+  // Process metrics, ensuring we don't include null values
   const metrics = {
-    temperature: filteredChartData.map(d => d.Temperature),
-    humidity: filteredChartData.map(d => d.Humidity),
-    co2: filteredChartData.map(d => d.CO2),
-    light: filteredChartData.map(d => d.Illumination),
-    airpressure: filteredChartData.map(d => d['Air Pressure']),
-    moldRisk: filteredChartData.map(d => d['Mold Risk'])
+    temperature: filteredChartData
+      .filter(d => d.Temperature !== null)
+      .map(d => d.Temperature),
+    humidity: filteredChartData
+      .filter(d => d.Humidity !== null)
+      .map(d => d.Humidity),
+    co2: filteredChartData
+      .filter(d => d.CO2 !== null)
+      .map(d => d.CO2),
+    light: filteredChartData
+      .filter(d => d.Illumination !== null)
+      .map(d => d.Illumination),
+    airpressure: filteredChartData
+      .filter(d => d['Air Pressure'] !== null)
+      .map(d => d['Air Pressure']),
+    moldRisk: filteredChartData
+      .filter(d => d['Mold Risk'] !== null)
+      .map(d => d['Mold Risk'])
   };
 
   // Get color for alert type
@@ -619,7 +689,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d.Temperature !== null)}
                             categories={["Temperature"]}
                             index="time"
                             colors={["orange"]}
@@ -710,7 +780,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d.Humidity !== null)}
                             categories={["Humidity"]}
                             index="time"
                             colors={["blue"]}
@@ -801,7 +871,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d.CO2 !== null)}
                             categories={["CO2"]}
                             index="time"
                             colors={["green"]}
@@ -892,7 +962,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d.Illumination !== null)}
                             categories={["Illumination"]}
                             index="time"
                             colors={["#FFC107"]}
@@ -966,7 +1036,7 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         <p className="text-xs sm:text-sm text-slate-500">Measured in hPa</p>
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d['Air Pressure'] !== null)}
                             categories={["Air Pressure"]}
                             index="time"
                             colors={["purple"]}
@@ -1008,10 +1078,10 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                         
                         <div className="h-[300px] sm:h-[400px] mt-2 sm:mt-4 -mx-2 sm:mx-0">
                           <LineChart
-                            data={filteredChartData}
+                            data={filteredChartData.filter(d => d['Mold Risk'] !== null)}
                             categories={["Mold Risk"]}
                             index="time"
-                            colors={["#8B4513"]} 
+                            colors={["#8B4513"]}
                             valueFormatter={(value: number) => `Level ${Math.round(value)}`}
                             className="h-full w-full"
                             customTooltip={({ payload }: ChartTooltipProps) => {
@@ -1085,9 +1155,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 <CardTitle className="text-lg sm:text-xl text-slate-800">Alert History</CardTitle>
                 {alerts.filter(a => a.status === 'active').length > 0 && (
                   <Badge variant="outline" className="ml-1 sm:ml-2 border-amber-200 bg-amber-50 text-amber-700 text-xs">
-                {alerts.filter(a => a.status === 'active').length} active
-              </Badge>
-            )}
+                    {alerts.filter(a => a.status === 'active').length} active
+                  </Badge>
+                )}
               </div>
               <CardDescription className="text-sm">Environmental condition alerts for this artwork</CardDescription>
         </CardHeader>
@@ -1185,8 +1255,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
               <span>All Alerts for {painting.name}</span>
               {alerts.filter(a => a.status === 'active').length > 0 && (
                 <Badge variant="outline" className="ml-1 sm:ml-2 border-amber-200 bg-amber-50 text-amber-700 text-xs">
-                {alerts.filter(a => a.status === 'active').length} active
-              </Badge>
+                  {alerts.filter(a => a.status === 'active').length} active
+                </Badge>
               )}
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
