@@ -4,6 +4,7 @@ import { isEmailConfigured } from '@/lib/emailConfig';
 import { supabase } from '@/lib/supabase';
 import { sendAlertEmail } from '@/lib/email';
 import { emailConfig } from '@/lib/emailConfig';
+import { processEnvironmentalData } from '@/lib/alertService';
 
 // Define types for our alerts
 interface Alert {
@@ -135,33 +136,65 @@ export async function GET(request: NextRequest) {
         // Send the alert email
         try {
           console.log(`Attempting to send email alert for ${painting.name} to ${emailConfig.alertRecipients.join(',')}`);
-          await sendAlertEmail({
-            to: emailConfig.alertRecipients.join(','), // Use configured recipients
-            subject: `Environmental Alert for ${painting.name}`,
-            text: `The following environmental alerts have been detected for ${painting.name} by ${painting.artist}:\n\n${alertsText}`,
-            html: `
-              <h2>Environmental Alert for ${painting.name}</h2>
-              <p>The following environmental alerts have been detected for <strong>${painting.name}</strong> by <strong>${painting.artist}</strong>:</p>
-              <ul>
-                ${paintingAlerts.map((alert: Alert) => {
-                  const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
-                                    alert.alert_type === 'illuminance' ? 'Light Level' : 
-                                    alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
-                                    alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
-                  
-                  // Special formatting for mold risk
-                  if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
-                    return `<li><strong>${alertType}:</strong> High (Level ${alert.measured_value})</li>`;
-                  }
-                  
-                  return `<li><strong>${alertType}:</strong> ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})</li>`;
-                }).join('')}
-              </ul>
-              <p>Please check the environmental conditions in the gallery immediately.</p>
-            `
+          
+          // Use the API-based approach for consistency
+          const firstAlert = paintingAlerts[0];
+          
+          // Map alert type to proper measurement type
+          let measurementType: any = firstAlert.alert_type;
+          if (firstAlert.alert_type === 'co2') measurementType = 'co2';
+          if (firstAlert.alert_type === 'temperature') measurementType = 'temperature';
+          if (firstAlert.alert_type === 'humidity') measurementType = 'humidity';
+          if (firstAlert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+          if (firstAlert.alert_type === 'illuminance') measurementType = 'illuminance';
+          
+          // Determine unit based on measurement type
+          let unit = '';
+          switch (measurementType) {
+            case 'temperature': unit = '°C'; break;
+            case 'humidity': unit = '%'; break;
+            case 'co2': unit = 'ppm'; break;
+            case 'illuminance': unit = 'lux'; break;
+            case 'mold_risk_level': unit = 'level'; break;
+            default: unit = ''; break;
+          }
+          
+          // Create thresholds object
+          const thresholds = {
+            lower: firstAlert.threshold_exceeded === 'lower' ? firstAlert.threshold_value : null,
+            upper: firstAlert.threshold_exceeded === 'upper' ? firstAlert.threshold_value : null,
+          };
+          
+          // Use this more consistent API-based approach
+          const sendEmailResponse = await fetch(new URL('/api/send-email', request.url).toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              alert: {
+                id: firstAlert.id,
+                paintingId: firstAlert.painting_id,
+                paintingName: painting.name,
+                artist: painting.artist,
+                measurement: {
+                  type: measurementType,
+                  value: firstAlert.measured_value,
+                  unit: unit
+                },
+                threshold: thresholds,
+                timestamp: firstAlert.timestamp
+              }
+            })
           });
           
-          console.log(`Alert email sent for ${painting.name}`);
+          const emailResult = await sendEmailResponse.json();
+          
+          if (emailResult.success) {
+            console.log(`Alert email sent for ${painting.name}`);
+          } else {
+            console.error(`Failed to send alert email for ${painting.name}: ${emailResult.error}`);
+          }
         } catch (emailError) {
           console.error(`Failed to send alert email for ${painting.name}:`, emailError);
         }
@@ -185,6 +218,35 @@ export async function POST(request: NextRequest) {
     
     // If specific environmental data ID provided, get that data point
     if (body.environmentalDataId) {
+      // First check if this data point already has alerts to avoid duplicates
+      const { data: existingAlerts, error: existingError } = await supabase
+        .from('alerts')
+        .select('id')
+        .eq('environmental_data_id', body.environmentalDataId);
+      
+      if (existingError) {
+        console.error('Error checking for existing alerts:', existingError);
+      } else if (existingAlerts && existingAlerts.length > 0) {
+        console.log(`Environmental data point ${body.environmentalDataId} already has ${existingAlerts.length} alerts. Skipping processing.`);
+        
+        // Return the existing alerts instead of creating new ones
+        const { data: alerts, error: getError } = await supabase
+          .from('alerts')
+          .select('*')
+          .eq('environmental_data_id', body.environmentalDataId);
+          
+        if (getError) {
+          console.error('Error fetching existing alerts:', getError);
+        } else {
+          return NextResponse.json({
+            success: true,
+            alerts: alerts || [],
+            message: 'Using existing alerts, no new alerts created'
+          });
+        }
+      }
+    
+      // Fetch the environmental data with painting details
       const { data: envData, error: envError } = await supabase
         .from('environmental_data')
         .select('*, paintings(*, painting_materials(materials(*)))')
@@ -199,97 +261,93 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Use the alerts API to check this data point
-      const alertsEndpointUrl = new URL('/api/alerts', request.url);
-      alertsEndpointUrl.searchParams.set('paintingId', envData.painting_id);
-      const alertsResponse = await fetch(alertsEndpointUrl);
-      const alertsData = await alertsResponse.json();
+      // Process the environmental data and create alerts
+      console.log('Processing environmental data for alerts:', body.environmentalDataId);
+      const createdAlerts = await processEnvironmentalData(envData);
+      console.log(`Created ${createdAlerts.length} alerts for environmental data ${body.environmentalDataId}`);
       
-      // If we have alerts, send emails
-      if (alertsData.success && alertsData.alerts && alertsData.alerts.length > 0) {
-        const alertsForThisDataPoint = alertsData.alerts.filter(
-          (alert: Alert) => alert.environmental_data_id === body.environmentalDataId
-        );
+      // If alerts were created, send email notifications
+      if (createdAlerts.length > 0) {
+        console.log('Sending email notifications for new alerts...');
+        const painting = envData.paintings;
         
-        if (alertsForThisDataPoint.length > 0) {
-          const painting = envData.paintings;
-          
-          // Format the alerts for the email
-          const alertsText = alertsForThisDataPoint.map((alert: Alert) => {
-            // Add extra logging for CO2 alerts to debug the issue
-            if (alert.alert_type === 'co2' || alert.alert_type === 'co2concentration') {
-              console.log('CO2 Alert Details:', {
-                alertType: alert.alert_type,
-                value: alert.measured_value,
-                threshold: alert.threshold_value,
-                timestamp: alert.timestamp
-              });
-            }
-            
-            const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
-                              alert.alert_type === 'illuminance' ? 'Light Level' : 
-                              alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
-                              alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
-            
-            // Special formatting for mold risk
-            if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
-              return `${alertType}: High (Level ${alert.measured_value})`;
-            }
-            
-            return `${alertType}: ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})`;
-          }).join('\n');
-          
-          // Send the alert email
+        // Process each alert for notification
+        for (const alert of createdAlerts) {
           try {
-            console.log(`Attempting to send email alert for ${painting.name} to ${emailConfig.alertRecipients.join(',')}`);
-            await sendAlertEmail({
-              to: emailConfig.alertRecipients.join(','), // Use configured recipients
-              subject: `Environmental Alert for ${painting.name}`,
-              text: `The following environmental alerts have been detected for ${painting.name} by ${painting.artist}:\n\n${alertsText}`,
-              html: `
-                <h2>Environmental Alert for ${painting.name}</h2>
-                <p>The following environmental alerts have been detected for <strong>${painting.name}</strong> by <strong>${painting.artist}</strong>:</p>
-                <ul>
-                  ${alertsForThisDataPoint.map((alert: Alert) => {
-                    const alertType = alert.alert_type === 'moldRiskLevel' ? 'Mold Risk' : 
-                                      alert.alert_type === 'illuminance' ? 'Light Level' : 
-                                      alert.alert_type === 'co2' || alert.alert_type === 'co2concentration' ? 'CO₂' :
-                                      alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1);
-                    
-                    // Special formatting for mold risk
-                    if (alert.alert_type === 'moldRiskLevel' || alert.alert_type === 'mold_risk_level') {
-                      return `<li><strong>${alertType}:</strong> High (Level ${alert.measured_value})</li>`;
-                    }
-                    
-                    return `<li><strong>${alertType}:</strong> ${alert.measured_value} (Threshold ${alert.threshold_exceeded === 'upper' ? 'exceeded' : 'below'} ${alert.threshold_value})</li>`;
-                  }).join('')}
-                </ul>
-                <p>Please check the environmental conditions in the gallery immediately.</p>
-              `
+            // Map alert type to proper measurement type
+            let measurementType: any = alert.alert_type;
+            if (alert.alert_type === 'co2') measurementType = 'co2';
+            if (alert.alert_type === 'temperature') measurementType = 'temperature';
+            if (alert.alert_type === 'humidity') measurementType = 'humidity';
+            if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+            if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
+            
+            // Determine unit based on measurement type
+            let unit = '';
+            switch (measurementType) {
+              case 'temperature': unit = '°C'; break;
+              case 'humidity': unit = '%'; break;
+              case 'co2': unit = 'ppm'; break;
+              case 'illuminance': unit = 'lux'; break;
+              case 'mold_risk_level': unit = 'level'; break;
+              default: unit = ''; break;
+            }
+            
+            // Create thresholds object
+            const thresholds = {
+              lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
+              upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
+            };
+            
+            // Use this:
+            const sendEmailResponse = await fetch(new URL('/api/send-email', request.url).toString(), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                alert: {
+                  id: alert.id,
+                  paintingId: alert.painting_id,
+                  paintingName: painting.name,
+                  artist: painting.artist,
+                  measurement: {
+                    type: measurementType,
+                    value: alert.measured_value,
+                    unit: unit
+                  },
+                  threshold: thresholds,
+                  timestamp: alert.timestamp
+                }
+              })
             });
             
-            console.log(`Alert email sent for ${painting.name}`);
+            const emailResult = await sendEmailResponse.json();
+            const emailSent = emailResult.success;
+            
+            console.log(`Email notification ${emailSent ? 'sent' : 'failed'} for alert type ${alert.alert_type}`);
           } catch (emailError) {
-            console.error(`Failed to send alert email for ${painting.name}:`, emailError);
+            console.error(`Error sending email notification for alert ${alert.id}:`, emailError);
           }
         }
       }
       
       return NextResponse.json({
         success: true,
-        alerts: alertsData.alerts.filter(
-          (alert: Alert) => alert.environmental_data_id === body.environmentalDataId
-        )
+        alerts: createdAlerts,
+        alertsCount: createdAlerts.length,
+        message: createdAlerts.length > 0 ? 'Alerts created and notifications sent' : 'No alerts created'
       });
     } else {
-      // If no specific data point, check all alerts (similar to GET)
-      return GET(request);
+      // If no specific data point ID provided, use the general alert check mechanism
+      const result = await checkAlertsAndNotify();
+      return NextResponse.json(result);
     }
   } catch (error) {
-    console.error('Error processing alert check:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process alert check' },
-      { status: 500 }
-    );
+    console.error('Error in POST /api/check-alerts:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    }, { status: 500 });
   }
 } 

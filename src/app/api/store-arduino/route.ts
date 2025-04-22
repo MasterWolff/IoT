@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { mapArduinoToDatabaseProperties } from '@/lib/propertyMapper';
 import { processEnvironmentalData, AlertRecord } from '@/lib/alertService';
 import { checkAlertsAndNotify } from '@/lib/api';
+import { sendAlertEmail } from '@/lib/email';
 
 // Store Arduino data with exact column names from the database
 export async function POST(request: Request) {
@@ -153,59 +154,79 @@ export async function POST(request: Request) {
       console.log('✅ STORE-ARDUINO: Successfully updated device last_measurement');
     }
     
-    // Process the new data for alerts immediately using our unified alert service
+    // Process environmental data to generate alerts
     let alerts: AlertRecord[] = [];
     
     try {
       console.log('🔔 STORE-ARDUINO: Checking for alerts on new environmental data');
       
+      // Initialize emailAlerts
+      let emailAlerts = {
+        checked: false,
+        emailsSent: 0,
+        alertsCount: 0
+      };
+      
       if (data && data.length > 0) {
+        // First, get painting details for email notifications
+        const { data: paintingData, error: paintingError } = await supabase
+          .from('paintings')
+          .select('id, name, artist')
+          .eq('id', data[0].painting_id)
+          .single();
+          
+        if (paintingError) {
+          console.error('❌ STORE-ARDUINO: Error fetching painting details:', paintingError);
+        }
+        
         // Process environmental data to generate alerts
         alerts = await processEnvironmentalData(data[0]);
         console.log(`🔔 STORE-ARDUINO: Generated ${alerts.length} alerts from new environmental data`);
+        
+        // If we have alerts and painting data, send emails directly
+        if (alerts.length > 0 && paintingData) {
+          const sentEmails = await processAlertsAndSendEmails(alerts, paintingData);
+          console.log(`🔔 STORE-ARDUINO: Sent ${sentEmails} email notifications for alerts`);
+          
+          emailAlerts = {
+            checked: true,
+            emailsSent: sentEmails,
+            alertsCount: alerts.length
+          };
+        } else {
+          // Fallback to general alert checking
+          const result = await checkAlertsAndNotify();
+          
+          if (result.success) {
+            emailAlerts = {
+              checked: true,
+              emailsSent: result.emailsSent || 0,
+              alertsCount: result.alertsCount || 0
+            };
+            console.log(`🔔 STORE-ARDUINO: Email alert check complete - ${emailAlerts.emailsSent} emails sent`);
+          } else {
+            console.error('❌ STORE-ARDUINO: Alert check failed:', result.error);
+          }
+        }
       }
+      
+      // Return data with alert information
+      return NextResponse.json({
+        success: true,
+        message: 'Arduino data saved successfully',
+        data: data && data.length > 0 ? data[0] : null,
+        alerts: {
+          checked: true,
+          count: alerts.length,
+          hasAlerts: alerts.length > 0,
+          alertDetails: alerts
+        },
+        emailAlerts
+      });
+      
     } catch (alertError) {
       console.error('❌ STORE-ARDUINO: Error processing alerts:', alertError);
     }
-    
-    // Check and notify about alerts
-    let emailAlerts = {
-      checked: false,
-      emailsSent: 0,
-      alertsCount: 0
-    };
-    
-    try {
-      console.log('🔔 STORE-ARDUINO: Checking and notifying about alerts');
-      const result = await checkAlertsAndNotify();
-      
-      if (result.success) {
-        emailAlerts = {
-          checked: true,
-          emailsSent: result.emailsSent || 0,
-          alertsCount: result.alertsCount || 0
-        };
-        console.log(`🔔 STORE-ARDUINO: Email alert check complete - ${emailAlerts.emailsSent} emails sent`);
-      } else {
-        console.error('❌ STORE-ARDUINO: Alert check failed:', result.error);
-      }
-    } catch (checkError) {
-      console.error('❌ STORE-ARDUINO: Error checking and notifying about alerts:', checkError);
-    }
-    
-    // Return data with alert information
-    return NextResponse.json({
-      success: true,
-      message: 'Arduino data saved successfully',
-      data: data && data.length > 0 ? data[0] : null,
-      alerts: {
-        checked: true,
-        count: alerts.length,
-        hasAlerts: alerts.length > 0,
-        alertDetails: alerts
-      },
-      emailAlerts
-    });
     
   } catch (error) {
     console.error('❌ STORE-ARDUINO: Unexpected error:', error);
@@ -277,4 +298,107 @@ export async function GET() {
       error: error instanceof Error ? error.message : 'Test failed'
     }, { status: 500 });
   }
+}
+
+// Process alerts and send emails for generated alerts
+async function processAlertsAndSendEmails(alerts: any[], painting: any) {
+  if (!alerts || alerts.length === 0 || !painting) {
+    console.log('No alerts to process for email notifications');
+    return 0;
+  }
+  
+  console.log(`🔔 STORE-ARDUINO: Processing ${alerts.length} alerts for email notifications`);
+  let emailsSent = 0;
+  
+  for (const alert of alerts) {
+    try {
+      // Map alert type to proper measurement type
+      let measurementType: any = alert.alert_type;
+      if (alert.alert_type === 'co2') measurementType = 'co2';
+      if (alert.alert_type === 'temperature') measurementType = 'temperature';
+      if (alert.alert_type === 'humidity') measurementType = 'humidity';
+      if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+      if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
+      
+      // Determine unit based on measurement type
+      let unit = '';
+      switch (measurementType) {
+        case 'temperature': unit = '°C'; break;
+        case 'humidity': unit = '%'; break;
+        case 'co2': unit = 'ppm'; break;
+        case 'illuminance': unit = 'lux'; break;
+        case 'mold_risk_level': unit = 'level'; break;
+        default: unit = ''; break;
+      }
+      
+      // Create thresholds object
+      const thresholds = {
+        lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
+        upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
+      };
+      
+      console.log('🔔 STORE-ARDUINO: Directly calling sendAlertEmail for immediate email delivery');
+      
+      // Instead of using fetch to the API, call the email service directly
+      // This avoids issues with URL construction and keeps everything server-side
+      const alertInfo = {
+        id: alert.id,
+        paintingId: alert.painting_id,
+        paintingName: painting.name,
+        artist: painting.artist,
+        measurement: {
+          type: measurementType,
+          value: alert.measured_value,
+          unit: unit
+        },
+        threshold: thresholds,
+        timestamp: alert.timestamp
+      };
+      
+      // Send email directly using the server-side email service
+      const emailSent = await sendAlertEmail(alertInfo);
+      
+      if (emailSent) {
+        emailsSent++;
+        console.log(`✅ STORE-ARDUINO: Successfully sent email alert for ${painting.name} (${alert.alert_type})`);
+      } else {
+        console.warn(`⚠️ STORE-ARDUINO: Failed to send email alert for ${painting.name} (${alert.alert_type})`);
+        console.warn(`⚠️ STORE-ARDUINO: Will try as fallback using the API route directly`);
+        
+        // Try as fallback using a hard-coded URL to the API
+        try {
+          // Use the absolute URL for the API endpoint
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+          const apiUrl = `${baseUrl}/api/send-email`;
+          
+          console.log(`🔄 STORE-ARDUINO: Trying fallback email API at ${apiUrl}`);
+          
+          const sendEmailResponse = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              alert: alertInfo
+            })
+          });
+          
+          const emailResult = await sendEmailResponse.json();
+          
+          if (emailResult.success) {
+            emailsSent++;
+            console.log(`✅ STORE-ARDUINO: Successfully sent email via fallback API for ${painting.name}`);
+          } else {
+            console.error(`❌ STORE-ARDUINO: Fallback API also failed to send email for ${painting.name}`);
+          }
+        } catch (fallbackError) {
+          console.error(`❌ STORE-ARDUINO: Error in fallback email API:`, fallbackError);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ STORE-ARDUINO: Error sending email for alert:`, error);
+    }
+  }
+  
+  return emailsSent;
 } 

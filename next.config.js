@@ -23,7 +23,23 @@ const nextConfig = {
         });
       }
     });
+
+    // Handle Node.js module polyfills
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,        // Nodemailer needs this
+      net: false,       // Nodemailer needs this
+      tls: false,       // Nodemailer needs this
+      dns: false,       // Nodemailer might need this
+      child_process: false,
+      path: false,
+    };
+    
     return config;
+  },
+  // Ensure server-only code doesn't get included in client bundles
+  experimental: {
+    serverComponentsExternalPackages: ['nodemailer']
   },
 }
 
