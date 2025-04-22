@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { emailConfig, isEmailConfigured } from '@/lib/emailConfig';
 import nodemailer from 'nodemailer';
 
+// Helper function to safely get and trim environment variables
+function getEnv(key: string, defaultValue: string = ''): string {
+  const value = process.env[key];
+  return value ? value.trim() : defaultValue;
+}
+
 // Define proper types for our results
 type EmailTestSuccess = {
   success: true;
@@ -44,14 +50,14 @@ export async function GET() {
   try {
     // Get environment variables for debugging
     const envVars = {
-      SMTP_HOST: process.env.EMAIL_SMTP_HOST || '(not set)',
-      SMTP_PORT: process.env.EMAIL_SMTP_PORT || '(not set)',
-      SMTP_SECURE: process.env.EMAIL_SMTP_SECURE || '(not set)',
-      SMTP_USER: process.env.EMAIL_SMTP_USER || '(not set)',
-      SMTP_PASSWORD: process.env.EMAIL_SMTP_PASSWORD ? '(set but hidden)' : '(not set)',
-      FROM: process.env.EMAIL_FROM || '(not set)',
-      RECIPIENTS: process.env.EMAIL_ALERT_RECIPIENTS || '(not set)',
-      THRESHOLD: process.env.EMAIL_ALERT_THRESHOLD_MINUTES || '(not set)'
+      SMTP_HOST: getEnv('EMAIL_SMTP_HOST', '(not set)'),
+      SMTP_PORT: getEnv('EMAIL_SMTP_PORT', '(not set)'),
+      SMTP_SECURE: getEnv('EMAIL_SMTP_SECURE', '(not set)'),
+      SMTP_USER: getEnv('EMAIL_SMTP_USER', '(not set)'),
+      SMTP_PASSWORD: getEnv('EMAIL_SMTP_PASSWORD') ? '(set but hidden)' : '(not set)',
+      FROM: getEnv('EMAIL_FROM', '(not set)'),
+      RECIPIENTS: getEnv('EMAIL_ALERT_RECIPIENTS', '(not set)'),
+      THRESHOLD: getEnv('EMAIL_ALERT_THRESHOLD_MINUTES', '(not set)')
     };
     
     // Get the actual config that's being used
