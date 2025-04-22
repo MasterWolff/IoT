@@ -2,6 +2,44 @@ import { NextResponse } from 'next/server';
 import { emailConfig, isEmailConfigured } from '@/lib/emailConfig';
 import nodemailer from 'nodemailer';
 
+// Define proper types for our results
+type EmailTestSuccess = {
+  success: true;
+  messageId: string;
+  response: string;
+  envelope: any;
+}
+
+type EmailTestError = {
+  success: false;
+  error: string;
+  code?: string;
+  command?: string;
+  responseCode?: number;
+  response?: string;
+  stack?: string;
+}
+
+type EmailTestResult = EmailTestSuccess | EmailTestError | { success: false; error: string };
+
+type VerifySuccess = {
+  success: true;
+  message: string;
+  details: any;
+}
+
+type VerifyError = {
+  success: false;
+  error: string;
+  code?: string;
+  command?: string;
+  responseCode?: number;
+  response?: string;
+  stack?: string;
+}
+
+type VerifyResult = VerifySuccess | VerifyError | { success: false; error: string };
+
 export async function GET() {
   try {
     // Get environment variables for debugging
@@ -34,8 +72,8 @@ export async function GET() {
     };
     
     // Test email sending functionality
-    let emailTestResult = { success: false, error: "Not attempted" };
-    let verifyResult = { success: false, error: "Not attempted" };
+    let emailTestResult: EmailTestResult = { success: false, error: "Not attempted" };
+    let verifyResult: VerifyResult = { success: false, error: "Not attempted" };
     
     try {
       // Step 1: Create a transporter
