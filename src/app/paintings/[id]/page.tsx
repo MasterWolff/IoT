@@ -9,7 +9,7 @@ import { getPaintingById } from '@/lib/clientApi';
 import { Painting, EnvironmentalData } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { LineChart } from "../../../components/ui/line-chart";
-import { AlertTriangle, Bell, X, Filter, SortDesc, Info, Calendar, User, Thermometer, Droplets, Wind, Bug, SunMedium, Gauge } from "lucide-react";
+import { AlertTriangle, Bell, X, Filter, SortDesc, Info, Calendar, User, Thermometer, Droplets, Wind, Bug, SunMedium, Gauge, Download } from "lucide-react";
 import { 
   Dialog, 
   DialogContent, 
@@ -100,6 +100,8 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   const [alertFilter, setAlertFilter] = useState<string>("all");
   const [alertSort, setAlertSort] = useState<string>("latest");
   const [dateFilter, setDateFilter] = useState<string>("all");
+  const [downloadFormat, setDownloadFormat] = useState<string>("json");
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     async function fetchPaintingDetails() {
@@ -584,6 +586,50 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 <div>
                   <CardTitle className="text-lg sm:text-xl text-slate-800">Environmental Monitoring</CardTitle>
                   <CardDescription className="mt-1 text-sm">Historical environmental data for this artwork</CardDescription>
+                  
+                  {/* Download Data Button Section */}
+                  <div className="mt-2">
+                    <p className="text-xs text-slate-500 mb-1">Download complete environmental data records:</p>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={downloadFormat}
+                        onValueChange={(value) => setDownloadFormat(value)}
+                      >
+                        <SelectTrigger className="h-8 w-[90px]">
+                          <SelectValue placeholder="Format" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="json">JSON</SelectItem>
+                          <SelectItem value="csv">CSV</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsDownloading(true);
+                          window.location.href = `/api/environmental-data/download?paintingId=${paintingId}&format=${downloadFormat}`;
+                          setTimeout(() => setIsDownloading(false), 2000);
+                        }}
+                        disabled={isDownloading}
+                        className="h-8"
+                      >
+                        {isDownloading ? (
+                          <>
+                            <span className="animate-pulse mr-1">Downloading</span>
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-3.5 w-3.5 mr-1.5" /> Download Data
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-col md:flex-row md:items-center gap-2 sm:gap-3">
                   {filteredChartData.length > 0 && (
