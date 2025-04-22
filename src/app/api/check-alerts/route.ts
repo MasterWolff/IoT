@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
         try {
           console.log(`Attempting to send email alert for ${painting.name} to ${emailConfig.alertRecipients.join(',')}`);
           
-          // Use the API-based approach for consistency
+          // Use the direct approach with AlertInfo
           const firstAlert = paintingAlerts[0];
           
           // Map alert type to proper measurement type
@@ -165,35 +165,25 @@ export async function GET(request: NextRequest) {
             upper: firstAlert.threshold_exceeded === 'upper' ? firstAlert.threshold_value : null,
           };
           
-          // Use this more consistent API-based approach
-          const sendEmailResponse = await fetch(new URL('/api/send-email', request.url).toString(), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
+          // Call sendAlertEmail directly instead of using fetch
+          const emailSent = await sendAlertEmail({
+            id: firstAlert.id,
+            paintingId: firstAlert.painting_id,
+            paintingName: painting.name,
+            artist: painting.artist,
+            measurement: {
+              type: measurementType,
+              value: firstAlert.measured_value,
+              unit: unit
             },
-            body: JSON.stringify({
-              alert: {
-                id: firstAlert.id,
-                paintingId: firstAlert.painting_id,
-                paintingName: painting.name,
-                artist: painting.artist,
-                measurement: {
-                  type: measurementType,
-                  value: firstAlert.measured_value,
-                  unit: unit
-                },
-                threshold: thresholds,
-                timestamp: firstAlert.timestamp
-              }
-            })
+            threshold: thresholds,
+            timestamp: firstAlert.timestamp
           });
           
-          const emailResult = await sendEmailResponse.json();
-          
-          if (emailResult.success) {
+          if (emailSent) {
             console.log(`Alert email sent for ${painting.name}`);
           } else {
-            console.error(`Failed to send alert email for ${painting.name}: ${emailResult.error}`);
+            console.error(`Failed to send alert email for ${painting.name}`);
           }
         } catch (emailError) {
           console.error(`Failed to send alert email for ${painting.name}:`, emailError);
@@ -299,31 +289,20 @@ export async function POST(request: NextRequest) {
               upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
             };
             
-            // Use this:
-            const sendEmailResponse = await fetch(new URL('/api/send-email', request.url).toString(), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
+            // Send email using direct call
+            const emailSent = await sendAlertEmail({
+              id: alert.id,
+              paintingId: alert.painting_id,
+              paintingName: painting.name,
+              artist: painting.artist,
+              measurement: {
+                type: measurementType,
+                value: alert.measured_value,
+                unit: unit
               },
-              body: JSON.stringify({
-                alert: {
-                  id: alert.id,
-                  paintingId: alert.painting_id,
-                  paintingName: painting.name,
-                  artist: painting.artist,
-                  measurement: {
-                    type: measurementType,
-                    value: alert.measured_value,
-                    unit: unit
-                  },
-                  threshold: thresholds,
-                  timestamp: alert.timestamp
-                }
-              })
+              threshold: thresholds,
+              timestamp: alert.timestamp
             });
-            
-            const emailResult = await sendEmailResponse.json();
-            const emailSent = emailResult.success;
             
             console.log(`Email notification ${emailSent ? 'sent' : 'failed'} for alert type ${alert.alert_type}`);
           } catch (emailError) {

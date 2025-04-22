@@ -339,8 +339,7 @@ async function processAlertsAndSendEmails(alerts: any[], painting: any) {
       
       console.log('🔔 STORE-ARDUINO: Directly calling sendAlertEmail for immediate email delivery');
       
-      // Instead of using fetch to the API, call the email service directly
-      // This avoids issues with URL construction and keeps everything server-side
+      // Create alert info object
       const alertInfo = {
         id: alert.id,
         paintingId: alert.painting_id,
@@ -363,37 +362,6 @@ async function processAlertsAndSendEmails(alerts: any[], painting: any) {
         console.log(`✅ STORE-ARDUINO: Successfully sent email alert for ${painting.name} (${alert.alert_type})`);
       } else {
         console.warn(`⚠️ STORE-ARDUINO: Failed to send email alert for ${painting.name} (${alert.alert_type})`);
-        console.warn(`⚠️ STORE-ARDUINO: Will try as fallback using the API route directly`);
-        
-        // Try as fallback using a hard-coded URL to the API
-        try {
-          // Use the absolute URL for the API endpoint
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-          const apiUrl = `${baseUrl}/api/send-email`;
-          
-          console.log(`🔄 STORE-ARDUINO: Trying fallback email API at ${apiUrl}`);
-          
-          const sendEmailResponse = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              alert: alertInfo
-            })
-          });
-          
-          const emailResult = await sendEmailResponse.json();
-          
-          if (emailResult.success) {
-            emailsSent++;
-            console.log(`✅ STORE-ARDUINO: Successfully sent email via fallback API for ${painting.name}`);
-          } else {
-            console.error(`❌ STORE-ARDUINO: Fallback API also failed to send email for ${painting.name}`);
-          }
-        } catch (fallbackError) {
-          console.error(`❌ STORE-ARDUINO: Error in fallback email API:`, fallbackError);
-        }
       }
     } catch (error) {
       console.error(`❌ STORE-ARDUINO: Error sending email for alert:`, error);
