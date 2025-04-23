@@ -102,6 +102,9 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [downloadFormat, setDownloadFormat] = useState<string>("json");
   const [isDownloading, setIsDownloading] = useState(false);
+  const [recentlyDismissed, setRecentlyDismissed] = useState<string[]>([]);
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [showAlertDialog, setShowAlertDialog] = useState(false);
 
   useEffect(() => {
     async function fetchPaintingDetails() {
@@ -410,6 +413,64 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
     });
     
     return { lower: lowerThreshold, upper: upperThreshold };
+  };
+
+  // Function to dismiss an alert
+  const handleDismissAlert = async (alertId: string) => {
+    try {
+      // Save the alert ID in a "recently dismissed" array to prevent it from reappearing
+      // due to the polling interval (race condition)
+      setRecentlyDismissed(prev => [...prev, alertId]);
+      
+      // Update the alert status in the database
+      const response = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: alertId,
+          status: 'dismissed'
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to dismiss alert:', await response.text());
+        setRecentlyDismissed(prev => prev.filter(id => id !== alertId)); // Remove from recently dismissed if failed
+        return;
+      }
+
+      // Update the alert in the UI - instead of filtering it out, mark it as dismissed
+      setAlerts(prevAlerts => 
+        prevAlerts.map(alert => 
+          alert.id === alertId 
+            ? { ...alert, status: 'dismissed', dismissed_at: new Date().toISOString() } 
+            : alert
+        )
+      );
+      
+      console.log(`Successfully dismissed alert: ${alertId}`);
+      
+      // Remove the alert ID from the "recently dismissed" list after 2 minutes
+      setTimeout(() => {
+        setRecentlyDismissed(prev => prev.filter(id => id !== alertId));
+      }, 120000); // 2 minutes
+    } catch (err) {
+      console.error('Error dismissing alert:', err);
+      setRecentlyDismissed(prev => prev.filter(id => id !== alertId)); // Remove from recently dismissed if failed
+    }
+  };
+  
+  // Function to show alert details
+  const showAlertDetails = (alert: Alert) => {
+    setSelectedAlert(alert);
+    setShowAlertDialog(true);
+  };
+  
+  // Function to close alert details dialog
+  const closeAlertDialog = () => {
+    setShowAlertDialog(false);
+    setSelectedAlert(null);
   };
 
   return (
@@ -1222,54 +1283,68 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 if (!alert) return null;
                 
                 return (
-                      <div 
-                        key={`${alert.alert_type}-${alert.status === 'dismissed'}`} 
-                        className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-lg border ${
-                          alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
-                        }`}
-                      >
-                        <div className={`p-2 sm:p-2.5 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
-                          <Bell className={`h-4 w-4 sm:h-5 sm:w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
+                  <div 
+                    key={`${alert.alert_type}-${alert.status === 'dismissed'}`} 
+                    className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-lg border ${
+                      alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
+                    } cursor-pointer hover:border-amber-300 transition-colors`}
+                    onClick={() => showAlertDetails(alert)}
+                  >
+                    <div className={`p-2 sm:p-2.5 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                      <Bell className={`h-4 w-4 sm:h-5 sm:w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
                     </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center justify-between gap-1">
-                            <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-                              <span className="font-medium text-slate-700 text-sm sm:text-base">
-                          {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
-                        </span>
-                              <Badge variant="outline" className={`bg-opacity-10 border text-xs ${
-                                alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
-                                alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
-                                alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
-                                'border-yellow-200 bg-yellow-50 text-yellow-700'
-                              }`}>
-                          {alert.alert_type === 'temperature' ? '°C' : 
-                           alert.alert_type === 'humidity' ? '%' : 
-                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
-                        </Badge>
-                        {group.count > 1 && (
-                                <Badge variant="outline" className="bg-gray-50 text-slate-600 text-xs">
-                            +{group.count - 1} more
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                          <span className="font-medium text-slate-700 text-sm sm:text-base">
+                            {alert.alert_type.charAt(0).toUpperCase() + alert.alert_type.slice(1)} alert
+                          </span>
+                          <Badge variant="outline" className={`bg-opacity-10 border text-xs ${
+                            alert.alert_type === 'temperature' ? 'border-orange-200 bg-orange-50 text-orange-700' : 
+                            alert.alert_type === 'humidity' ? 'border-blue-200 bg-blue-50 text-blue-700' : 
+                            alert.alert_type === 'co2' ? 'border-green-200 bg-green-50 text-green-700' : 
+                            'border-yellow-200 bg-yellow-50 text-yellow-700'
+                          }`}>
+                            {alert.alert_type === 'temperature' ? '°C' : 
+                            alert.alert_type === 'humidity' ? '%' : 
+                            alert.alert_type === 'co2' ? 'ppm' : 'lux'}
                           </Badge>
+                          {group.count > 1 && (
+                            <Badge variant="outline" className="bg-gray-50 text-slate-600 text-xs">
+                              +{group.count - 1} more
+                            </Badge>
+                          )}
+                        </div>
+                        {alert.status === 'active' && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDismissAlert(alert.id);
+                            }}
+                            className="h-7 w-7 p-0 rounded-full hover:bg-amber-100"
+                          >
+                            <X className="h-4 w-4 text-amber-700" />
+                          </Button>
                         )}
-                            </div>
                         {alert.status === 'dismissed' && (
-                              <Badge variant="outline" className="bg-gray-50 text-slate-500 text-xs">
+                          <Badge variant="outline" className="bg-gray-50 text-slate-500 text-xs">
                             Resolved
                           </Badge>
                         )}
                       </div>
-                          <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row sm:justify-between">
-                            <p className="text-xs sm:text-sm text-slate-600">
-                              Threshold: <span className="font-medium">{alert.threshold_value}</span> | 
-                              Actual: <span className={`font-medium ${alert.status === 'active' ? 'text-amber-700' : ''}`}>
-                                {alert.measured_value}
-                              </span>
-                            </p>
-                            <p className="text-xs text-slate-500 mt-0.5 sm:mt-0">
-                        Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
-                      </p>
-                          </div>
+                      <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row sm:justify-between">
+                        <p className="text-xs sm:text-sm text-slate-600">
+                          Threshold: <span className="font-medium">{alert.threshold_value}</span> | 
+                          Actual: <span className={`font-medium ${alert.status === 'active' ? 'text-amber-700' : ''}`}>
+                            {alert.measured_value}
+                          </span>
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 sm:mt-0">
+                          Latest: {format(new Date(alert.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1365,9 +1440,13 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                 return bRatio - aRatio;
               })
               .map(alert => (
-                <div key={alert.id} className={`flex items-start gap-2 sm:gap-4 p-2 sm:p-4 rounded-lg border ${
-                  alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
-                }`}>
+                <div 
+                  key={alert.id} 
+                  className={`flex items-start gap-2 sm:gap-4 p-2 sm:p-4 rounded-lg border ${
+                    alert.status === 'active' ? 'bg-amber-50' : 'bg-gray-50'
+                  } cursor-pointer hover:border-amber-300 transition-colors`}
+                  onClick={() => showAlertDetails(alert)}
+                >
                   <div className={`p-1.5 sm:p-2 rounded-full ${alert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
                     <Bell className={`h-3 w-3 sm:h-5 sm:w-5 ${alert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
                   </div>
@@ -1388,7 +1467,19 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
                           alert.alert_type === 'co2' ? 'ppm' : 'lux'}
                         </Badge>
                       </div>
-                      {alert.status === 'dismissed' && (
+                      {alert.status === 'active' ? (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismissAlert(alert.id);
+                          }}
+                          className="h-7 w-7 p-0 rounded-full hover:bg-amber-100"
+                        >
+                          <X className="h-4 w-4 text-amber-700" />
+                        </Button>
+                      ) : (
                         <Badge variant="outline" className="bg-gray-50 text-slate-500 text-xs">
                           Resolved
                         </Badge>
@@ -1413,10 +1504,85 @@ export default function PaintingDetailsPage({ params }: { params: { id: string }
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-white text-slate-700 hover:bg-gray-50 text-xs sm:text-sm h-8 sm:h-9 px-3 py-1">Close</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-xs sm:text-sm h-8 sm:h-9 px-3 py-1">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Details Dialog */}
+      {showAlertDialog && selectedAlert && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
+            <div className="p-5">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-bold">Alert Details</h3>
+                <button 
+                  onClick={closeAlertDialog}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-full ${selectedAlert.status === 'dismissed' ? 'bg-gray-200' : 'bg-amber-100'}`}>
+                    <Bell className={`h-5 w-5 ${selectedAlert.status === 'dismissed' ? 'text-gray-500' : 'text-amber-600'}`} />
+                  </div>
+                  <span className="font-semibold text-lg">
+                    {selectedAlert.alert_type.charAt(0).toUpperCase() + selectedAlert.alert_type.slice(1)} Alert
+                  </span>
+                </div>
+                
+                <div className="space-y-2">
+                  <p><strong>Painting:</strong> {painting?.name} by {painting?.artist || 'Unknown Artist'}</p>
+                  <p>
+                    <strong>Problem:</strong> {selectedAlert.alert_type.charAt(0).toUpperCase() + selectedAlert.alert_type.slice(1)} 
+                    {' '}of {selectedAlert.measured_value}{selectedAlert.alert_type === 'temperature' ? '°C' : 
+                    selectedAlert.alert_type === 'humidity' ? '%' : 
+                    selectedAlert.alert_type === 'co2' ? ' ppm' : ' lux'} exceeds the 
+                    {selectedAlert.threshold_exceeded === 'upper' ? ' upper' : ' lower'} threshold 
+                    of {selectedAlert.threshold_value}{selectedAlert.alert_type === 'temperature' ? '°C' : 
+                    selectedAlert.alert_type === 'humidity' ? '%' : 
+                    selectedAlert.alert_type === 'co2' ? ' ppm' : ' lux'}
+                  </p>
+                  <p><strong>Action:</strong> Adjust {selectedAlert.alert_type} in the environment</p>
+                  <p className="text-sm text-muted-foreground">
+                    Recorded at {format(new Date(selectedAlert.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                  </p>
+                  {selectedAlert.status === 'dismissed' && selectedAlert.dismissed_at && (
+                    <p className="text-sm text-muted-foreground">
+                      Resolved at {format(new Date(selectedAlert.dismissed_at), 'MMM dd, yyyy HH:mm:ss')}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="mt-6 flex justify-end gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={closeAlertDialog}
+                    className="bg-gray-200 text-gray-800 hover:bg-gray-300"
+                  >
+                    Close
+                  </Button>
+                  {selectedAlert.status === 'active' && (
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        handleDismissAlert(selectedAlert.id);
+                        closeAlertDialog();
+                      }}
+                      className="bg-amber-500 text-white hover:bg-amber-600"
+                    >
+                      Dismiss Alert
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
