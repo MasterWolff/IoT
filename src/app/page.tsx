@@ -46,7 +46,14 @@ type Device = {
   id: string;
   name: string;
   status: string;
-  paintings: Painting;
+  arduino_device_id?: string | null;
+  arduino_thing_id?: string | null;
+  painting_id?: string;
+  last_calibration_date?: string | null;
+  last_measurement?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  paintings?: Painting;
 };
 
 // Types for the environment data
@@ -248,8 +255,23 @@ export default function DashboardPage() {
         }
       }
       
-      // Fetch environmental data
-      if (full || fetchEnvironmentalData || fetchDataPoints) {
+      // Fetch total count for data points
+      if (full || fetchDataPoints) {
+        console.log('📊 Fetching environmental data count...');
+        
+        const countResponse = await fetch('/api/environmental-data?countOnly=true');
+        const countData = await countResponse.json();
+        
+        if (!countResponse.ok) {
+          throw new Error('Failed to fetch environmental data count');
+        }
+        
+        // Update count for stats
+        setDataPoints(countData.count || 0);
+      }
+      
+      // Fetch environmental data separately if requested
+      if (full || fetchEnvironmentalData) {
         console.log('📊 Fetching environmental data...');
         setEnvDataLoading(true);
         
@@ -260,19 +282,13 @@ export default function DashboardPage() {
           throw new Error('Failed to fetch environmental data');
         }
         
-        // Update count for stats
-        setDataPoints(envData.count || 0);
-        
-        // Now also set the actual data if requested
-        if (full || fetchEnvironmentalData) {
-          if (envData.success && envData.data && Array.isArray(envData.data)) {
-            console.log(`Received ${envData.data.length} environmental data points`);
-            setEnvironmentalData(envData.data);
-            setEnvDataError(null);
-          } else {
-            console.warn('No environmental data found or empty array returned');
-            setEnvDataError('No environmental data available');
-          }
+        if (envData.success && envData.data && Array.isArray(envData.data)) {
+          console.log(`Received ${envData.data.length} environmental data points`);
+          setEnvironmentalData(envData.data);
+          setEnvDataError(null);
+        } else {
+          console.warn('No environmental data found or empty array returned');
+          setEnvDataError('No environmental data available');
         }
         
         setEnvDataLoading(false);
@@ -322,8 +338,18 @@ export default function DashboardPage() {
     });
   };
 
-  // Calculate active devices
-  const activeDevices = devices.filter(device => device.status === 'active').length;
+  // Calculate active devices - match the logic in devices page
+  const activeDevices = devices.filter(device => {
+    if (!device.last_measurement) return false;
+    
+    // Calculate time difference in hours
+    const lastMeasurement = new Date(device.last_measurement);
+    const now = new Date();
+    const hoursDiff = (now.getTime() - lastMeasurement.getTime()) / (1000 * 60 * 60);
+    
+    // Device is online if it had a measurement within the last 3 hours (previously 1 hour)
+    return hoursDiff < 3;
+  }).length;
 
   // Get alert info for display
   const getAlertInfo = (alert: any) => {

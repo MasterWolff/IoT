@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { PlusCircle, MoreHorizontal, Frame, Building2, Calendar, AlertCircle, Clock, Heart } from "lucide-react";
 import { getPaintings } from "@/lib/clientApi";
 import { useEffect, useState } from "react";
+import { supabase } from '@/lib/supabase';
 
 interface Painting {
   id: string;
@@ -41,20 +42,58 @@ interface Painting {
 export default function PaintingsPage() {
   const [paintings, setPaintings] = useState<Painting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [alertsByPainting, setAlertsByPainting] = useState<Record<string, number>>({});
 
   useEffect(() => {
+    async function fetchAlerts() {
+      try {
+        // Fetch active alerts
+        const { data: alerts, error } = await supabase
+          .from('alerts')
+          .select('painting_id, id')
+          .eq('status', 'active');
+        
+        if (error) {
+          console.error("Error fetching alerts:", error);
+          return {};
+        }
+        
+        // Count alerts per painting
+        const alertCounts: Record<string, number> = {};
+        alerts?.forEach(alert => {
+          if (alert.painting_id) {
+            alertCounts[alert.painting_id] = (alertCounts[alert.painting_id] || 0) + 1;
+          }
+        });
+        
+        setAlertsByPainting(alertCounts);
+        return alertCounts;
+      } catch (error) {
+        console.error("Error in fetchAlerts:", error);
+        return {};
+      }
+    }
+    
     async function fetchPaintings() {
       try {
-        const data = await getPaintings();
+        const paintingsData = await getPaintings();
+        const alertCounts = await fetchAlerts();
         
-        // Enrich data with random alerts count for demo purposes
-        // and add calculated fields
-        const enrichedData = data.map(painting => {
+        // Enrich data with actual alert counts and fixed locations
+        const locationsMap: Record<string, string> = {
+          'Mona Lisa': 'Gallery Room 1',
+          'The Starry Night': 'Gallery Room 3',
+          'Guernica': 'Gallery Room 8',
+          'The Persistence of Memory': 'Gallery Room 4',
+          'The Scream': 'Gallery Room 4',
+        };
+        
+        const enrichedData = paintingsData.map(painting => {
           return {
             ...painting,
             year: painting.creation_date?.split('-')[0] || 'Unknown', // Extract year from creation_date
-            location: 'Gallery Room ' + Math.floor(Math.random() * 10 + 1), // Demo location data
-            alerts_count: Math.floor(Math.random() * 5)
+            location: locationsMap[painting.name] || 'Gallery Room ' + Math.floor(Math.random() * 10 + 1),
+            alerts_count: alertCounts[painting.id] || 0
           };
         });
         
@@ -65,6 +104,7 @@ export default function PaintingsPage() {
         setLoading(false);
       }
     }
+    
     fetchPaintings();
   }, []);
 
