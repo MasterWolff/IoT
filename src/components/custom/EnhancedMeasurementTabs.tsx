@@ -181,17 +181,7 @@ export function EnhancedMeasurementTabs({
 
   return (
     <section>
-      {/* Info banner about data source */}
-      <div className="bg-blue-50 border border-blue-200 rounded-md p-2 mb-4 text-sm text-blue-700 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-        <span>
-          Displaying actual measurement timestamps from the database. Data is only updated when auto-fetch is enabled.
-        </span>
-      </div>
+      {/* Info banner about data source - Removed as requested */}
       
       <div className="flex justify-end items-center mb-4">
         <div className="flex items-center gap-2">

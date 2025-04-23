@@ -34,6 +34,17 @@ import {
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { useAutoFetchStore } from '@/lib/autoFetchService';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Type definitions
 type Painting = {
@@ -534,273 +545,282 @@ export default function DashboardPage() {
   const deduplicatedAlerts = getDeduplicatedAlerts(alerts);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <div className="flex items-center gap-2 mt-2 sm:mt-0">
-          <span className="text-sm text-muted-foreground">
-            UI refreshed: {format(new Date(lastRefresh), 'HH:mm:ss')}
-          </span>
-          <button 
-            onClick={handleRefresh}
-            className="rounded-full p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-            title="Refresh dashboard data"
-          >
-            <RefreshCcw className="h-4 w-4" />
-          </button>
+    <TooltipProvider>
+      <div className="flex-1 space-y-6 p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <span className="text-sm text-muted-foreground">
+              UI refreshed: {format(new Date(lastRefresh), 'HH:mm:ss')}
+            </span>
+            <button 
+              onClick={handleRefresh}
+              className="rounded-full p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              title="Refresh dashboard data"
+            >
+              <RefreshCcw className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
-      
-      {error && (
-        <Alert variant="destructive" className="shadow-sm">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="shadow-sm border-l-2 border-l-blue-400">
-          <CardHeader className="pb-2 pt-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Total Paintings</CardTitle>
-              <FrameIcon className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold">
-              {loading ? '...' : paintings.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Monitored artworks</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm border-l-2 border-l-green-400">
-          <CardHeader className="pb-2 pt-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
-              <DevicesIcon className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold">
-              {loading ? '...' : activeDevices}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {loading ? '...' : `${devices.length} total devices`}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm border-l-2 border-l-amber-400">
-          <CardHeader className="pb-2 pt-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Alerts</CardTitle>
-              <BellIcon className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-amber-600">
-              {loading ? '...' : deduplicatedAlerts.length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {deduplicatedAlerts.length > 0 ? 'Require attention' : 'No active alerts'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm border-l-2 border-l-purple-400">
-          <CardHeader className="pb-2 pt-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Data Points</CardTitle>
-              <DatabaseIcon className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold">
-              {loading ? '...' : dataPoints.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Total measurements</p>
-          </CardContent>
-        </Card>
-      </div>
+        
+        {error && (
+          <Alert variant="destructive" className="shadow-sm">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="shadow-sm border-l-2 border-l-blue-400">
+            <CardHeader className="pb-2 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Total Paintings</CardTitle>
+                <FrameIcon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">
+                {loading ? '...' : paintings.length}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Monitored artworks</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-l-2 border-l-green-400">
+            <CardHeader className="pb-2 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
+                <DevicesIcon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">
+                {loading ? '...' : activeDevices}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {loading ? '...' : `${devices.length} total devices`}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-l-2 border-l-amber-400">
+            <CardHeader className="pb-2 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Alerts</CardTitle>
+                <BellIcon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold text-amber-600">
+                {loading ? '...' : deduplicatedAlerts.length}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {deduplicatedAlerts.length > 0 ? 'Require attention' : 'No active alerts'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-l-2 border-l-purple-400">
+            <CardHeader className="pb-2 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Data Points</CardTitle>
+                <DatabaseIcon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">
+                {loading ? '...' : dataPoints.toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Total measurements</p>
+            </CardContent>
+          </Card>
+        </div>
 
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
-            {deduplicatedAlerts.length > 0 && (
-              <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
-                {deduplicatedAlerts.length}
-              </span>
-            )}
+        <section className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold tracking-tight">Active Alerts</h2>
+              {deduplicatedAlerts.length > 0 && (
+                <span className="inline-flex items-center justify-center bg-amber-100 text-amber-800 text-xs font-medium rounded-full h-5 px-2">
+                  {deduplicatedAlerts.length}
+                </span>
+              )}
+            </div>
+            
+            <Link 
+              href="/alert-history" 
+              className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
+                <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+                <line x1="16" x2="16" y1="2" y2="6"></line>
+                <line x1="8" x2="8" y1="2" y2="6"></line>
+                <line x1="3" x2="21" y1="10" y2="10"></line>
+              </svg>
+              View Alert History
+            </Link>
           </div>
           
-          <Link 
-            href="/alert-history" 
-            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600">
-              <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
-              <line x1="16" x2="16" y1="2" y2="6"></line>
-              <line x1="8" x2="8" y1="2" y2="6"></line>
-              <line x1="3" x2="21" y1="10" y2="10"></line>
-            </svg>
-            View Alert History
-          </Link>
-        </div>
-        
-        {loading ? (
-          <Card className="p-4 sm:p-6 text-center text-muted-foreground">
-            Loading alerts...
-          </Card>
-        ) : deduplicatedAlerts.length > 0 ? (
-          <div className="grid gap-2">
-            {deduplicatedAlerts.map((alert, index) => {
-              const alertInfo = getAlertInfo(alert);
-              const paintingName = alert.paintings?.name || `Painting ID: ${alert.painting_id}`;
-              const artistName = alert.paintings?.artist || 'Unknown Artist';
-              return (
-                <button 
-                  key={alert.id || index} 
-                  className="text-left w-full"
-                  onClick={() => showAlertDetails(alert)}
-                >
-                  <Alert 
-                    variant="warning" 
-                    className={`shadow-sm border-l-2 ${
-                      recentlyDismissed.includes(alert.id) 
-                        ? 'border-l-gray-300 opacity-60' 
-                        : 'border-l-amber-400'
-                    } relative pr-10 cursor-pointer hover:bg-amber-50 py-2`}
-                  >
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDismissAlert(alert.id);
-                      }}
-                      className={`absolute top-2 right-2 ${
-                        recentlyDismissed.includes(alert.id) 
-                          ? 'text-gray-400 pointer-events-none' 
-                          : 'text-amber-500 hover:text-amber-700'
-                      } transition-colors`}
-                      aria-label="Dismiss alert"
-                      title="Dismiss alert"
-                      disabled={recentlyDismissed.includes(alert.id)}
-                    >
-                      {recentlyDismissed.includes(alert.id) ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="16 12 12 8 8 12" />
-                          <polyline points="12 16 12 8" />
-                        </svg>
-                      ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="m15 9-6 6" />
-                          <path d="m9 9 6 6" />
-                        </svg>
-                      )}
-                    </button>
-                    <div className="flex items-center gap-2">
-                      {alertInfo.icon}
-                      <div>
-                        <div className="font-medium text-sm">
-                          {alertInfo.title}
-                          {recentlyDismissed.includes(alert.id) && (
-                            <span className="ml-2 text-gray-500 text-xs italic">(Dismissing...)</span>
-                          )}
-                        </div>
-                        <AlertDescription className="mt-0">
-                          <p className="text-sm truncate">{paintingName}</p>
-                        </AlertDescription>
-                      </div>
-                    </div>
-                  </Alert>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <Card className="p-4 sm:p-6 text-center">
-            <p className="text-muted-foreground">No active alerts at this time</p>
-          </Card>
-        )}
-        
-        {/* Alert Details Dialog */}
-        {showAlertDialog && selectedAlert && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
-              <div className="p-5">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-xl font-bold">Alert Details</h3>
+          {loading ? (
+            <Card className="p-4 sm:p-6 text-center text-muted-foreground">
+              Loading alerts...
+            </Card>
+          ) : deduplicatedAlerts.length > 0 ? (
+            <div className="grid gap-2">
+              {deduplicatedAlerts.map((alert, index) => {
+                const alertInfo = getAlertInfo(alert);
+                const paintingName = alert.paintings?.name || `Painting ID: ${alert.painting_id}`;
+                const artistName = alert.paintings?.artist || 'Unknown Artist';
+                return (
                   <button 
-                    onClick={closeAlertDialog}
-                    className="text-gray-500 hover:text-gray-700"
+                    key={alert.id || index} 
+                    className="text-left w-full"
+                    onClick={() => showAlertDetails(alert)}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-                
-                {(() => {
-                  const alertInfo = getAlertInfo(selectedAlert);
-                  return (
-                    <div className="space-y-4">
+                    <Alert 
+                      variant="warning" 
+                      className={`shadow-sm border-l-2 ${
+                        recentlyDismissed.includes(alert.id) 
+                          ? 'border-l-gray-300 opacity-60' 
+                          : 'border-l-amber-400'
+                      } relative pr-10 cursor-pointer hover:bg-amber-50 py-2`}
+                    >
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDismissAlert(alert.id);
+                        }}
+                        className={`absolute top-2 right-2 ${
+                          recentlyDismissed.includes(alert.id) 
+                            ? 'text-gray-400 pointer-events-none' 
+                            : 'text-amber-500 hover:text-amber-700'
+                        } transition-colors`}
+                        aria-label="Dismiss alert"
+                        title="Dismiss alert"
+                        disabled={recentlyDismissed.includes(alert.id)}
+                      >
+                        {recentlyDismissed.includes(alert.id) ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="16 12 12 8 8 12" />
+                            <polyline points="12 16 12 8" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="m15 9-6 6" />
+                            <path d="m9 9 6 6" />
+                          </svg>
+                        )}
+                      </button>
                       <div className="flex items-center gap-2">
                         {alertInfo.icon}
-                        <span className="font-semibold text-lg">{alertInfo.title}</span>
+                        <div>
+                          <div className="font-medium text-sm">
+                            {alertInfo.title}
+                            {recentlyDismissed.includes(alert.id) && (
+                              <span className="ml-2 text-gray-500 text-xs italic">(Dismissing...)</span>
+                            )}
+                          </div>
+                          <AlertDescription className="mt-0">
+                            <p className="text-sm truncate">{paintingName}</p>
+                          </AlertDescription>
+                        </div>
                       </div>
-                      
-                      <div className="space-y-2">
-                        <p><strong>Painting:</strong> {selectedAlert.paintings?.name 
-                          ? `${selectedAlert.paintings.name} by ${selectedAlert.paintings.artist || 'Unknown Artist'}` 
-                          : `ID: ${selectedAlert.painting_id || 'Unknown'}`}</p>
-                        <p><strong>Problem:</strong> {alertInfo.problem}</p>
-                        <p><strong>Action:</strong> {alertInfo.action}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Last updated {selectedAlert.timestamp ? formatRelativeTime(new Date(selectedAlert.timestamp)) : 'recently'}
-                        </p>
+                    </Alert>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="p-4 sm:p-6 text-center">
+              <p className="text-muted-foreground">No active alerts at this time</p>
+            </Card>
+          )}
+          
+          {/* Alert Details Dialog */}
+          {showAlertDialog && selectedAlert && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-bold">Alert Details</h3>
+                    <button 
+                      onClick={closeAlertDialog}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  {(() => {
+                    const alertInfo = getAlertInfo(selectedAlert);
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          {alertInfo.icon}
+                          <span className="font-semibold text-lg">{alertInfo.title}</span>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <p><strong>Painting:</strong> {selectedAlert.paintings?.name 
+                            ? `${selectedAlert.paintings.name} by ${selectedAlert.paintings.artist || 'Unknown Artist'}` 
+                            : `ID: ${selectedAlert.painting_id || 'Unknown'}`}</p>
+                          <p><strong>Problem:</strong> {alertInfo.problem}</p>
+                          <p><strong>Action:</strong> {alertInfo.action}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Last updated {selectedAlert.timestamp ? formatRelativeTime(new Date(selectedAlert.timestamp)) : 'recently'}
+                          </p>
+                        </div>
+                        
+                        <div className="mt-6 flex justify-end gap-3">
+                          <button
+                            onClick={closeAlertDialog}
+                            className="px-4 py-2 bg-gray-200 rounded-md text-gray-800 hover:bg-gray-300 font-medium"
+                          >
+                            Close
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleDismissAlert(selectedAlert.id);
+                              closeAlertDialog();
+                            }}
+                            className="px-4 py-2 bg-amber-500 rounded-md text-white hover:bg-amber-600 font-medium"
+                          >
+                            Dismiss Alert
+                          </button>
+                        </div>
                       </div>
-                      
-                      <div className="mt-6 flex justify-end gap-3">
-                        <button
-                          onClick={closeAlertDialog}
-                          className="px-4 py-2 bg-gray-200 rounded-md text-gray-800 hover:bg-gray-300 font-medium"
-                        >
-                          Close
-                        </button>
-                        <button
-                          onClick={() => {
-                            handleDismissAlert(selectedAlert.id);
-                            closeAlertDialog();
-                          }}
-                          className="px-4 py-2 bg-amber-500 rounded-md text-white hover:bg-amber-600 font-medium"
-                        >
-                          Dismiss Alert
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
               </div>
             </div>
+          )}
+        </section>
+        
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-xl font-bold tracking-tight">Measurements</h2>
+            <Popover>
+              <PopoverTrigger>
+                <InfoIcon className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-pointer" />
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-2 text-sm" side="right">
+                Displaying actual measurement timestamps from the database. Data is only updated when auto-fetch is enabled.
+              </PopoverContent>
+            </Popover>
           </div>
-        )}
-      </section>
-      
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-xl font-bold tracking-tight">Measurements</h2>
-          <InfoIcon className="h-4 w-4 text-muted-foreground" />
-        </div>
-        <EnhancedMeasurementTabs 
-          measurements={environmentalData}
-          alerts={alerts}
-          isLoading={envDataLoading}
-          error={envDataError}
-          onRefresh={handleEnvDataRefresh}
-        />
-      </section>
-    </div>
+          <EnhancedMeasurementTabs 
+            measurements={environmentalData}
+            alerts={alerts}
+            isLoading={envDataLoading}
+            error={envDataError}
+            onRefresh={handleEnvDataRefresh}
+          />
+        </section>
+      </div>
+    </TooltipProvider>
   );
 }
