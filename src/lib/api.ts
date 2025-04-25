@@ -1,7 +1,9 @@
 import { supabase } from './supabase';
 import type { Painting, Material, Device, EnvironmentalData } from './supabase';
-import type { AlertInfo } from './emailService';
+import type { AlertInfo } from './email';
 import { PROPERTY_MAPPINGS } from './propertyMapper';
+import { createClient } from '@supabase/supabase-js';
+import { format } from 'date-fns';
 
 // Paintings API
 export async function getPaintings() {
@@ -266,7 +268,7 @@ export async function checkAlertsAndNotify() {
     
     // Lazy import to avoid circular dependencies
     console.log('🔍 EMAIL CHECK: Importing email service...');
-    const { sendAlertEmail } = await import('./emailService');
+    const { sendAlertEmail } = await import('./email');
     console.log('🔍 EMAIL CHECK: Email service imported successfully');
     
     let emailsSent = 0;
@@ -290,310 +292,330 @@ export async function checkAlertsAndNotify() {
       return { success: false, alertsCount: alerts.length, emailsSent: 0, error: 'Email is not configured properly' };
     }
     
-    // Process each alert
-    console.log('🔍 EMAIL CHECK: Starting to process alerts...');
-    for (const alertData of alerts) {
-      const painting = alertData.paintings;
-      if (!painting) {
-        console.log('🔍 EMAIL CHECK: Alert has no painting data, skipping:', alertData.id);
+    // Group alerts by painting to avoid sending too many emails
+    console.log('🔍 EMAIL CHECK: Grouping alerts by painting...');
+    
+    // Define interface for painting alerts
+    interface PaintingAlertGroup {
+      painting: {
+        id: string;
+        name: string;
+        artist: string;
+        [key: string]: any;
+      };
+      alerts: Array<{
+        id: string;
+        painting_id: string;
+        alert_type: string;
+        measured_value: number;
+        threshold_value: number;
+        threshold_exceeded: 'upper' | 'lower';
+        timestamp: string;
+        status: string;
+        [key: string]: any;
+      }>;
+    }
+    
+    // Create the mapping with proper type
+    const alertsByPainting: Record<string, PaintingAlertGroup> = {};
+    
+    for (const alert of alerts) {
+      // Skip dismissed alerts
+      if (alert.status === 'dismissed') {
+        console.log(`🔍 EMAIL CHECK: Skipping dismissed alert ${alert.id}`);
         continue;
       }
       
-      console.log(`🔍 EMAIL CHECK: Processing alert for painting: ${painting.name} (${painting.id})`);
+      // Only include alerts for paintings with materials
+      if (!alert.paintings || !alert.paintings.painting_materials) {
+        console.log(`🔍 EMAIL CHECK: Skipping alert ${alert.id} - no painting materials defined`);
+        continue;
+      }
       
-      // Log materials info
-      const materialsCount = painting.painting_materials?.length || 0;
-      console.log(`🔍 EMAIL CHECK: Painting has ${materialsCount} materials to check thresholds against`);
+      const paintingId = alert.painting_id;
+      const painting = alert.paintings;
       
-      // For each affected material, prepare and send an alert
-      for (const pm of painting.painting_materials || []) {
-        const material = pm.materials;
-        if (!material) {
-          console.log('🔍 EMAIL CHECK: Painting material has no materials data, skipping');
-          continue;
-        }
+      if (!alertsByPainting[paintingId]) {
+        alertsByPainting[paintingId] = {
+          painting,
+          alerts: []
+        };
+      }
+      
+      alertsByPainting[paintingId].alerts.push(alert);
+    }
+    
+    // Convert to array and sort by alert count (most alerts first)
+    const paintingsWithAlerts = Object.values(alertsByPainting)
+      .filter((entry: PaintingAlertGroup) => entry.alerts.length > 0)
+      .sort((a: PaintingAlertGroup, b: PaintingAlertGroup) => b.alerts.length - a.alerts.length);
+    
+    console.log(`🔍 EMAIL CHECK: Found ${paintingsWithAlerts.length} paintings with active alerts`);
+    
+    // Now process each painting's alerts
+    for (const entry of paintingsWithAlerts) {
+      const painting = entry.painting;
+      const paintingAlerts = entry.alerts;
+      
+      for (const alert of paintingAlerts) {
+        attemptedEmails++;
         
-        console.log(`🔍 EMAIL CHECK: Checking thresholds for material: ${material.name || 'Unknown'}`);
-        
-        // Check which threshold was exceeded and prepare alert information
-        if (alertData.temperature !== null) {
-          console.log(`🔍 EMAIL CHECK: Checking temperature: ${alertData.temperature}°C against thresholds [${material.threshold_temperature_lower}-${material.threshold_temperature_upper}]`);
+        try {
+          console.log(`🔍 EMAIL CHECK: Sending alert for ${painting.name} - ${alert.alert_type} (${alert.measured_value})`);
           
-          if ((material.threshold_temperature_lower !== null && alertData.temperature < material.threshold_temperature_lower) ||
-              (material.threshold_temperature_upper !== null && alertData.temperature > material.threshold_temperature_upper)) {
-            
-            console.log(`🔍 EMAIL CHECK: Temperature threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'temperature',
-                value: alertData.temperature,
-                unit: '°C'
-              },
-              threshold: {
-                lower: material.threshold_temperature_lower,
-                upper: material.threshold_temperature_upper
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send temperature alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: Temperature alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
-          } else {
-            console.log(`🔍 EMAIL CHECK: Temperature values within acceptable range for ${painting.name}`);
+          // Map alert type to proper measurement type
+          let measurementType: any = alert.alert_type;
+          if (alert.alert_type === 'co2') measurementType = 'co2';
+          if (alert.alert_type === 'temperature') measurementType = 'temperature';
+          if (alert.alert_type === 'humidity') measurementType = 'humidity';
+          if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+          if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
+          
+          // Determine unit based on measurement type
+          let unit = '';
+          switch (measurementType) {
+            case 'temperature': unit = '°C'; break;
+            case 'humidity': unit = '%'; break;
+            case 'co2': unit = 'ppm'; break;
+            case 'illuminance': unit = 'lux'; break;
+            case 'mold_risk_level': unit = 'level'; break;
+            default: unit = ''; break;
           }
-        }
-        
-        // Check humidity threshold
-        if (alertData.humidity !== null) {
-          console.log(`🔍 EMAIL CHECK: Checking humidity: ${alertData.humidity}% against thresholds [${material.threshold_humidity_lower}-${material.threshold_humidity_upper}]`);
           
-          if ((material.threshold_humidity_lower !== null && alertData.humidity < material.threshold_humidity_lower) ||
-              (material.threshold_humidity_upper !== null && alertData.humidity > material.threshold_humidity_upper)) {
-            
-            console.log(`🔍 EMAIL CHECK: Humidity threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'humidity',
-                value: alertData.humidity,
-                unit: '%'
-              },
-              threshold: {
-                lower: material.threshold_humidity_lower,
-                upper: material.threshold_humidity_upper
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send humidity alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: Humidity alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
-          } else {
-            console.log(`🔍 EMAIL CHECK: Humidity values within acceptable range for ${painting.name}`);
-          }
-        }
-        
-        // Check illuminance threshold
-        if (alertData.illuminance !== null || alertData.illumination !== null) {
-          // Get illuminance value from the right field
-          const illuminanceValue = alertData.illuminance !== null ? alertData.illuminance : alertData.illumination;
+          // Create thresholds object
+          const thresholds = {
+            lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
+            upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
+          };
           
-          console.log(`🔍 EMAIL CHECK: Checking illuminance: ${illuminanceValue} lux against thresholds [${material.threshold_illuminance_lower}-${material.threshold_illuminance_upper}]`);
-          
-          if ((material.threshold_illuminance_lower !== null && illuminanceValue < material.threshold_illuminance_lower) ||
-              (material.threshold_illuminance_upper !== null && illuminanceValue > material.threshold_illuminance_upper)) {
-            
-            console.log(`🔍 EMAIL CHECK: Illuminance threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'illuminance',
-                value: illuminanceValue,
-                unit: 'lux'
-              },
-              threshold: {
-                lower: material.threshold_illuminance_lower,
-                upper: material.threshold_illuminance_upper
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send illuminance alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: Illuminance alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
-          }
-        }
-        
-        // Check CO2 threshold
-        if (alertData.co2 !== null || alertData.co2concentration !== null || alertData.co2Concentration !== null) {
-          // Get CO2 value from the right field - could be in any of several field names
-          let co2Value = null;
-          
-          // Enhanced logging to debug the CO2 field issue
-          console.log('🔍 EMAIL CHECK: CO2 field debug:', {
-            hasDataObj: !!alertData,
-            dataFields: Object.keys(alertData || {}),
-            co2Field: alertData?.co2,
-            co2concentrationField: alertData?.co2concentration,
-            co2ConcentrationField: alertData?.co2Concentration,
+          // Send email using the comprehensive email service
+          const emailSent = await sendAlertEmail({
+            id: alert.id,
+            paintingId: alert.painting_id,
+            paintingName: painting.name,
+            artist: painting.artist,
+            measurement: {
+              type: measurementType,
+              value: alert.measured_value,
+              unit: unit
+            },
+            threshold: thresholds,
+            timestamp: alert.timestamp
           });
           
-          // Try all possible field variations
-          if (alertData.co2 !== null && alertData.co2 !== undefined) {
-            co2Value = alertData.co2;
-          } else if (alertData.co2concentration !== null && alertData.co2concentration !== undefined) {
-            co2Value = alertData.co2concentration;
-          } else if (alertData.co2Concentration !== null && alertData.co2Concentration !== undefined) {
-            co2Value = alertData.co2Concentration;
-          }
-          
-          // Set default CO2 threshold of 600 ppm if no material threshold is set
-          const co2LowerThreshold = material.threshold_co2concentration_lower;
-          const co2UpperThreshold = material.threshold_co2concentration_upper !== null ? material.threshold_co2concentration_upper : 600;
-          
-          console.log(`🔍 EMAIL CHECK: Checking CO2: ${co2Value} ppm against thresholds [${co2LowerThreshold}-${co2UpperThreshold}] (${co2UpperThreshold === 600 && material.threshold_co2concentration_upper === null ? 'using default upper threshold' : 'using material threshold'})`);
-          
-          // Extra debugging for CO2 values
-          console.log('🔍 EMAIL CHECK: CO2 threshold details:', {
-            co2Value,
-            co2Field: alertData.co2 !== null ? 'co2' : alertData.co2concentration !== null ? 'co2concentration' : 'co2Concentration',
-            lowerThreshold: co2LowerThreshold,
-            upperThreshold: co2UpperThreshold,
-            usingDefaultThreshold: co2UpperThreshold === 600 && material.threshold_co2concentration_upper === null,
-            hasLowerThreshold: co2LowerThreshold !== null,
-            hasUpperThreshold: co2UpperThreshold !== null,
-            exceedsLower: co2LowerThreshold !== null && co2Value < co2LowerThreshold,
-            exceedsUpper: co2UpperThreshold !== null && co2Value > co2UpperThreshold
-          });
-          
-          if ((co2LowerThreshold !== null && co2Value < co2LowerThreshold) ||
-              (co2UpperThreshold !== null && co2Value > co2UpperThreshold)) {
-            
-            console.log(`🔍 EMAIL CHECK: CO2 threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'co2',
-                value: co2Value,
-                unit: 'ppm'
-              },
-              threshold: {
-                lower: co2LowerThreshold,
-                upper: co2UpperThreshold
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send CO2 alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: CO2 alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
+          if (emailSent) {
+            emailsSent++;
+            console.log(`✅ EMAIL CHECK: Successfully sent alert email for ${painting.name} (${alert.alert_type})`);
           } else {
-            console.log(`🔍 EMAIL CHECK: CO2 values within acceptable range for ${painting.name}`);
+            console.warn(`⚠️ EMAIL CHECK: Failed to send alert email for ${painting.name} (${alert.alert_type})`);
           }
-        }
-        
-        // Check air pressure threshold
-        if (alertData.air_pressure !== null || alertData.airpressure !== null) {
-          // Get air pressure value from the right field
-          const airPressureValue = alertData.air_pressure !== null ? alertData.air_pressure : alertData.airpressure;
-          
-          console.log(`🔍 EMAIL CHECK: Checking air pressure: ${airPressureValue} hPa against thresholds [${material.threshold_airpressure_lower}-${material.threshold_airpressure_upper}]`);
-          
-          if ((material.threshold_airpressure_lower !== null && airPressureValue < material.threshold_airpressure_lower) ||
-              (material.threshold_airpressure_upper !== null && airPressureValue > material.threshold_airpressure_upper)) {
-            
-            console.log(`🔍 EMAIL CHECK: Air pressure threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'air_pressure',
-                value: airPressureValue,
-                unit: 'hPa'
-              },
-              threshold: {
-                lower: material.threshold_airpressure_lower,
-                upper: material.threshold_airpressure_upper
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send air pressure alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: Air pressure alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
-          }
-        }
-        
-        // Check mold risk threshold
-        if (alertData.mold_risk_level !== null || alertData.moldrisklevel !== null) {
-          // Get mold risk value from the right field - could be in either mold_risk_level or moldrisklevel
-          const moldRiskValue = alertData.mold_risk_level !== null ? alertData.mold_risk_level : alertData.moldrisklevel;
-          
-          console.log(`🔍 EMAIL CHECK: Checking mold risk: ${moldRiskValue} against thresholds [${material.threshold_moldrisklevel_lower}-${material.threshold_moldrisklevel_upper}]`);
-          
-          if ((material.threshold_moldrisklevel_lower !== null && moldRiskValue < material.threshold_moldrisklevel_lower) ||
-              (material.threshold_moldrisklevel_upper !== null && moldRiskValue > material.threshold_moldrisklevel_upper)) {
-            
-            console.log(`🔍 EMAIL CHECK: Mold risk threshold exceeded for ${painting.name}`);
-            
-            const alertInfo: AlertInfo = {
-              id: alertData.id,
-              paintingId: painting.id,
-              paintingName: painting.name,
-              artist: painting.artist,
-              measurement: {
-                type: 'mold_risk_level',
-                value: moldRiskValue,
-                unit: ''
-              },
-              threshold: {
-                lower: material.threshold_moldrisklevel_lower,
-                upper: material.threshold_moldrisklevel_upper
-              },
-              timestamp: alertData.timestamp
-            };
-            
-            console.log(`🔍 EMAIL CHECK: Attempting to send mold risk alert email for ${painting.name}`);
-            attemptedEmails++;
-            const sent = await sendAlertEmail(alertInfo);
-            console.log(`🔍 EMAIL CHECK: Mold risk alert email ${sent ? 'sent successfully' : 'failed to send'}`);
-            if (sent) emailsSent++;
-          } else {
-            console.log(`🔍 EMAIL CHECK: Mold risk values within acceptable range for ${painting.name}`);
-          }
+        } catch (emailError) {
+          console.error(`❌ EMAIL CHECK: Error sending alert email for ${painting.name}:`, emailError);
         }
       }
     }
     
-    // Final result
-    console.log(`🔍 EMAIL CHECK: Completed alert checking. Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}.`);
+    console.log(`🔍 EMAIL CHECK: Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}`);
     
     return { 
       success: true, 
-      alertsCount: alerts.length,
+      alertsCount: alerts.length, 
       emailsSent,
-      attemptedEmails
+      paintingsWithAlerts: paintingsWithAlerts.length
     };
   } catch (error) {
-    console.error('❌ EMAIL CHECK: Error checking alerts and sending notifications:', error);
-    if (error instanceof Error) {
-      console.error('❌ EMAIL CHECK: Error details:', error.message);
-      console.error('❌ EMAIL CHECK: Error stack:', error.stack);
-    }
+    console.error('❌ EMAIL CHECK: Error in checkAlertsAndNotify:', error);
     return { 
       success: false, 
-      error: `Failed to process alerts: ${error instanceof Error ? error.message : String(error)}`
+      error: error instanceof Error ? error.message : 'Unknown error checking alerts', 
+      alertsCount: 0, 
+      emailsSent: 0 
+    };
+  }
+}
+
+async function checkAlertsAndSendNotifications(): Promise<CheckAlertsResult> {
+  console.log('🔍 API: Starting alert check and notification process');
+  
+  try {
+    // Get alerts
+    const { success, alerts, error } = await getAlerts();
+    
+    if (!success || !alerts) {
+      console.error('🔍 API: Failed to get alerts:', error);
+      return { success: false, error: error || 'Failed to get alerts' };
+    }
+    
+    if (alerts.length === 0) {
+      console.log('🔍 API: No alerts found, skipping notifications');
+      return { success: true, alertsCount: 0, emailsSent: 0, message: 'No alerts found' };
+    }
+    
+    // Import email service dynamically to avoid server/client issues
+    console.log('🔍 EMAIL CHECK: Importing email service...');
+    const { sendAlertEmail } = await import('./email');
+    
+    // Import email config
+    const { emailConfig, isEmailConfigured } = await import('./emailConfig');
+    
+    let emailsSent = 0;
+    let attemptedEmails = 0;
+    
+    // Log email configuration
+    const emailConfigured = isEmailConfigured();
+    console.log('🔍 EMAIL CHECK: Email configuration status:', { 
+      isConfigured: emailConfigured,
+      host: emailConfig.smtp.host,
+      port: emailConfig.smtp.port,
+      hasUser: !!emailConfig.smtp.auth.user,
+      hasPassword: !!emailConfig.smtp.auth.pass,
+      from: emailConfig.from,
+      recipients: emailConfig.alertRecipients 
+    });
+    
+    if (!emailConfigured) {
+      console.error('❌ EMAIL CHECK: Email is not configured properly. Cannot send notifications.');
+      return { success: false, alertsCount: alerts.length, emailsSent: 0, error: 'Email is not configured properly' };
+    }
+    
+    // Group alerts by painting to avoid sending too many emails
+    console.log('🔍 EMAIL CHECK: Grouping alerts by painting...');
+    
+    // Define interface for painting alerts
+    interface PaintingAlertGroup {
+      painting: {
+        id: string;
+        name: string;
+        artist: string;
+        [key: string]: any;
+      };
+      alerts: Array<{
+        id: string;
+        painting_id: string;
+        alert_type: string;
+        measured_value: number;
+        threshold_value: number;
+        threshold_exceeded: 'upper' | 'lower';
+        timestamp: string;
+        status: string;
+        [key: string]: any;
+      }>;
+    }
+    
+    // Create the mapping with proper type
+    const alertsByPainting: Record<string, PaintingAlertGroup> = {};
+    
+    for (const alert of alerts) {
+      // Skip dismissed alerts
+      if (alert.status === 'dismissed') {
+        console.log(`🔍 EMAIL CHECK: Skipping dismissed alert ${alert.id}`);
+        continue;
+      }
+      
+      // Only include alerts for paintings with materials
+      if (!alert.paintings || !alert.paintings.painting_materials) {
+        console.log(`🔍 EMAIL CHECK: Skipping alert ${alert.id} - no painting materials defined`);
+        continue;
+      }
+      
+      const paintingId = alert.painting_id;
+      const painting = alert.paintings;
+      
+      if (!alertsByPainting[paintingId]) {
+        alertsByPainting[paintingId] = {
+          painting,
+          alerts: []
+        };
+      }
+      
+      alertsByPainting[paintingId].alerts.push(alert);
+    }
+    
+    // Convert to array and sort by alert count (most alerts first)
+    const paintingsWithAlerts = Object.values(alertsByPainting)
+      .filter((entry: PaintingAlertGroup) => entry.alerts.length > 0)
+      .sort((a: PaintingAlertGroup, b: PaintingAlertGroup) => b.alerts.length - a.alerts.length);
+    
+    console.log(`🔍 EMAIL CHECK: Found ${paintingsWithAlerts.length} paintings with active alerts`);
+    
+    // Now process each painting's alerts
+    for (const entry of paintingsWithAlerts) {
+      const painting = entry.painting;
+      const paintingAlerts = entry.alerts;
+      
+      for (const alert of paintingAlerts) {
+        attemptedEmails++;
+        
+        try {
+          console.log(`🔍 EMAIL CHECK: Sending alert for ${painting.name} - ${alert.alert_type} (${alert.measured_value})`);
+          
+          // Map alert type to proper measurement type
+          let measurementType: any = alert.alert_type;
+          if (alert.alert_type === 'co2') measurementType = 'co2';
+          if (alert.alert_type === 'temperature') measurementType = 'temperature';
+          if (alert.alert_type === 'humidity') measurementType = 'humidity';
+          if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+          if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
+          
+          // Determine unit based on measurement type
+          let unit = '';
+          switch (measurementType) {
+            case 'temperature': unit = '°C'; break;
+            case 'humidity': unit = '%'; break;
+            case 'co2': unit = 'ppm'; break;
+            case 'illuminance': unit = 'lux'; break;
+            case 'mold_risk_level': unit = 'level'; break;
+            default: unit = ''; break;
+          }
+          
+          // Create thresholds object
+          const thresholds = {
+            lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
+            upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
+          };
+          
+          // Send email using the comprehensive email service
+          const emailSent = await sendAlertEmail({
+            id: alert.id,
+            paintingId: alert.painting_id,
+            paintingName: painting.name,
+            artist: painting.artist,
+            measurement: {
+              type: measurementType,
+              value: alert.measured_value,
+              unit: unit
+            },
+            threshold: thresholds,
+            timestamp: alert.timestamp
+          });
+          
+          if (emailSent) {
+            emailsSent++;
+            console.log(`✅ EMAIL CHECK: Successfully sent alert email for ${painting.name} (${alert.alert_type})`);
+          } else {
+            console.warn(`⚠️ EMAIL CHECK: Failed to send alert email for ${painting.name} (${alert.alert_type})`);
+          }
+        } catch (emailError) {
+          console.error(`❌ EMAIL CHECK: Error sending alert email for ${painting.name}:`, emailError);
+        }
+      }
+    }
+    
+    console.log(`🔍 EMAIL CHECK: Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}`);
+    
+    return { 
+      success: true, 
+      alertsCount: alerts.length, 
+      emailsSent,
+      paintingsWithAlerts: paintingsWithAlerts.length
+    };
+  } catch (error) {
+    console.error('❌ EMAIL CHECK: Error in checkAlertsAndNotify:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error checking alerts', 
+      alertsCount: 0, 
+      emailsSent: 0 
     };
   }
 } 

@@ -147,7 +147,38 @@ export async function ensureAlertsTableExists(): Promise<boolean> {
  */
 export async function storeAlertRecord(alertData: Partial<AlertRecord>): Promise<AlertRecord | null> {
   try {
-    // Check if a similar alert already exists and is active
+    // Determine the time window for filtering similar alerts based on alert type
+    let timeWindowHours = 24; // Default time window in hours
+    
+    // Customize time window based on alert type
+    if (alertData.alert_type) {
+      switch (alertData.alert_type.toLowerCase()) {
+        case 'co2':
+        case 'co2concentration':
+          timeWindowHours = 12; // CO2 alerts may need more frequent updates
+          break;
+        case 'mold_risk_level':
+        case 'moldrisklevel':
+          timeWindowHours = 48; // Mold risk alerts can have longer windows
+          break;
+        case 'temperature':
+        case 'humidity':
+          timeWindowHours = 24; // Default for environmental conditions
+          break;
+        case 'airpressure':
+          timeWindowHours = 12; // Air pressure changes may need monitoring more frequently
+          break;
+        default:
+          timeWindowHours = 24;
+      }
+    }
+    
+    // Calculate the timestamp for filtering (now minus the time window)
+    const currentDate = new Date();
+    const filterDate = new Date(currentDate.getTime() - (timeWindowHours * 60 * 60 * 1000));
+    const filterTimestamp = filterDate.toISOString();
+    
+    // Check if a similar alert already exists and is active within the time window
     const { data: existingAlerts, error: queryError } = await supabase
       .from('alerts')
       .select('*')
@@ -155,28 +186,47 @@ export async function storeAlertRecord(alertData: Partial<AlertRecord>): Promise
       .eq('alert_type', alertData.alert_type)
       .eq('threshold_exceeded', alertData.threshold_exceeded)
       .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .gte('created_at', filterTimestamp)
+      .order('created_at', { ascending: false });
     
     if (queryError) {
       console.error('Error checking for existing alerts:', queryError);
       return null;
     }
     
-    // If a similar active alert exists, check when it was created
+    // If any similar active alerts exist within the time window, return the most recent one
     if (existingAlerts && existingAlerts.length > 0) {
       const existingAlert = existingAlerts[0];
       const existingAlertDate = new Date(existingAlert.created_at);
-      const currentDate = new Date();
       const hoursSinceLastAlert = (currentDate.getTime() - existingAlertDate.getTime()) / (1000 * 60 * 60);
       
-      // If the alert is less than 24 hours old, skip creating a new one
-      if (hoursSinceLastAlert < 24) {
-        console.log(`Similar active alert already exists for ${alertData.alert_type} ${alertData.threshold_exceeded} from ${hoursSinceLastAlert.toFixed(1)} hours ago. Skipping.`);
+      // Add an additional check for values that are very close to the previous alert
+      // Only create a new alert if the measured value has changed significantly
+      const previousValue = existingAlert.measured_value;
+      const currentValue = alertData.measured_value;
+      
+      // Define threshold percentage changes that would trigger a new alert
+      const significantChangeThreshold = getSignificantChangeThreshold(alertData.alert_type);
+      
+      // Check if we have valid values to compare
+      if (currentValue !== undefined && currentValue !== null && previousValue !== null) {
+        const valueChangePercent = Math.abs((currentValue - previousValue) / previousValue * 100);
+        
+        // Check if the change is significant enough to create a new alert
+        const isSignificantChange = valueChangePercent > significantChangeThreshold;
+        
+        // If the alert is within the time window and the change is not significant, skip creating a new one
+        if (!isSignificantChange) {
+          console.log(`Similar active alert already exists for ${alertData.alert_type} ${alertData.threshold_exceeded} from ${hoursSinceLastAlert.toFixed(1)} hours ago. Value change ${valueChangePercent.toFixed(1)}% is below threshold ${significantChangeThreshold}%. Skipping.`);
+          return existingAlert as AlertRecord;
+        }
+        
+        console.log(`Similar active alert exists but measured value changed significantly (${valueChangePercent.toFixed(1)}% > ${significantChangeThreshold}%). Creating a new alert.`);
+      } else {
+        // If we don't have valid values, use the time window as the only criteria
+        console.log(`Similar active alert already exists from ${hoursSinceLastAlert.toFixed(1)} hours ago, but can't compare values. Using default behavior.`);
         return existingAlert as AlertRecord;
       }
-      
-      console.log(`Similar active alert exists but was created ${hoursSinceLastAlert.toFixed(1)} hours ago (>24 hours). Creating a new alert.`);
     }
     
     // Format the alert for insertion - explicitly generate a UUID
@@ -227,6 +277,32 @@ export async function storeAlertRecord(alertData: Partial<AlertRecord>): Promise
   } catch (err) {
     console.error('Unexpected error storing alert:', err);
     return null;
+  }
+}
+
+/**
+ * Helper function to determine the significant change threshold percentage for each alert type
+ */
+function getSignificantChangeThreshold(alertType: string | undefined): number {
+  if (!alertType) return 10; // Default 10% change threshold
+  
+  switch (alertType.toLowerCase()) {
+    case 'temperature':
+      return 5;  // 5% change in temperature is significant
+    case 'humidity':
+      return 10; // 10% change in humidity is significant
+    case 'co2':
+    case 'co2concentration':
+      return 15; // 15% change in CO2 is significant 
+    case 'airpressure':
+      return 3;  // 3% change in air pressure is significant
+    case 'mold_risk_level':
+    case 'moldrisklevel':
+      return 0;  // Any change in mold risk level is significant (levels are discrete)
+    case 'illuminance':
+      return 20; // 20% change in light level is significant
+    default:
+      return 10; // Default 10% change threshold
   }
 }
 
@@ -335,6 +411,19 @@ export async function processEnvironmentalData(envData: EnvironmentalData): Prom
   
   if (!envData.paintings || !envData.paintings.painting_materials || envData.paintings.painting_materials.length === 0) {
     console.log(`No painting materials found for painting ID: ${envData.painting_id}`);
+    return alerts;
+  }
+  
+  // First, check if this environmental data point has already been processed for alerts
+  const { data: existingAlerts, error: queryError } = await supabase
+    .from('alerts')
+    .select('id')
+    .eq('environmental_data_id', envData.id);
+  
+  if (queryError) {
+    console.error('Error checking if data point has existing alerts:', queryError);
+  } else if (existingAlerts && existingAlerts.length > 0) {
+    console.log(`Environmental data point ${envData.id} already has ${existingAlerts.length} alerts. Skipping processing.`);
     return alerts;
   }
   
@@ -605,6 +694,22 @@ export async function processAllEnvironmentalData(): Promise<AlertRecord[]> {
   console.log('Processing all environmental data for alerts...');
   
   try {
+    // First, get a list of all environmental data IDs that already have alerts
+    // This allows us to efficiently skip these in bulk rather than checking one by one
+    const { data: existingAlertData, error: alertError } = await supabase
+      .from('alerts')
+      .select('environmental_data_id')
+      .not('environmental_data_id', 'is', null);
+    
+    if (alertError) {
+      console.error('Error fetching existing alerts:', alertError);
+      return [];
+    }
+    
+    // Create a Set of environmental data IDs that already have alerts for fast lookup
+    const processedDataIds = new Set(existingAlertData?.map(a => a.environmental_data_id) || []);
+    console.log(`Found ${processedDataIds.size} environmental data points that already have alerts`);
+    
     // Fetch environmental data with paintings and their materials
     const { data, error } = await supabase
       .from('environmental_data')
@@ -632,16 +737,24 @@ export async function processAllEnvironmentalData(): Promise<AlertRecord[]> {
       return [];
     }
     
-    console.log(`Found ${data.length} environmental data points to process`);
+    // Filter out data points that already have alerts
+    const dataToProcess = data.filter(dataPoint => !processedDataIds.has(dataPoint.id));
+    
+    console.log(`Found ${data.length} environmental data points, ${dataToProcess.length} need processing`);
+    
+    if (dataToProcess.length === 0) {
+      console.log('All recent environmental data points already have alerts. Nothing to process.');
+      return [];
+    }
     
     // Process each data point and collect alerts
-    const alertPromises = data.map(dataPoint => processEnvironmentalData(dataPoint as EnvironmentalData));
+    const alertPromises = dataToProcess.map(dataPoint => processEnvironmentalData(dataPoint as EnvironmentalData));
     const alertResults = await Promise.all(alertPromises);
     
     // Flatten the array of arrays
     const allAlerts = alertResults.flat();
     
-    console.log(`Processed ${data.length} data points, generated ${allAlerts.length} alerts`);
+    console.log(`Processed ${dataToProcess.length} data points, generated ${allAlerts.length} alerts`);
     return allAlerts;
   } catch (err) {
     console.error('Unexpected error processing environmental data:', err);
@@ -657,30 +770,104 @@ export async function updateAlertStatus(
   status: 'active' | 'dismissed'
 ): Promise<boolean> {
   try {
-    const updateData: any = { 
+    console.log(`Updating alert ${alertId} status to ${status}`);
+    
+    // Get the current alert to check painting ID
+    const { data: currentAlert, error: getError } = await supabase
+      .from('alerts')
+      .select('painting_id')
+      .eq('id', alertId)
+      .single();
+    
+    if (getError) {
+      console.error('Error getting alert:', getError);
+      return false;
+    }
+    
+    const updateData: any = {
       status,
       updated_at: new Date().toISOString()
     };
     
-    // If dismissing, set the dismissed_at timestamp
+    // If we're dismissing the alert, set the dismissed_at timestamp
     if (status === 'dismissed') {
       updateData.dismissed_at = new Date().toISOString();
     }
     
+    // Update the alert status
     const { error } = await supabase
       .from('alerts')
       .update(updateData)
       .eq('id', alertId);
     
     if (error) {
-      console.error(`Error updating alert ${alertId} status:`, error);
+      console.error('Error updating alert status:', error);
       return false;
     }
     
     console.log(`Alert ${alertId} status updated to ${status}`);
+    
+    // If we're dismissing the alert, clear the email rate limiting for this painting
+    if (status === 'dismissed' && currentAlert?.painting_id) {
+      try {
+        // Dynamically import to avoid circular dependency
+        const { clearRateLimitingForPainting } = await import('./email');
+        await clearRateLimitingForPainting(currentAlert.painting_id);
+        console.log(`Rate limiting cleared for painting ${currentAlert.painting_id}`);
+      } catch (importError) {
+        console.error('Error importing email service:', importError);
+      }
+    }
+    
     return true;
-  } catch (err) {
-    console.error('Unexpected error updating alert status:', err);
+  } catch (error) {
+    console.error('Error updating alert status:', error);
+    return false;
+  }
+}
+
+// When alerts are dismissed, clear the rate limiting for that painting
+// This allows a new alert email to be sent immediately if a new alert is generated
+export async function handleAlertDismissal(alertId: string): Promise<boolean> {
+  try {
+    // Get the alert details
+    const { data: alert, error: alertError } = await supabase
+      .from('alerts')
+      .select('painting_id')
+      .eq('id', alertId)
+      .single();
+    
+    if (alertError || !alert) {
+      console.error('Error fetching alert for dismissal:', alertError);
+      return false;
+    }
+    
+    // Update the alert status
+    const { error: updateError } = await supabase
+      .from('alerts')
+      .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
+      .eq('id', alertId);
+    
+    if (updateError) {
+      console.error('Error dismissing alert:', updateError);
+      return false;
+    }
+    
+    // Clear the rate limiting for this painting's alerts
+    try {
+      // Import the email service function
+      const { clearRateLimitingForPainting } = await import('./email');
+      
+      // Clear rate limiting
+      await clearRateLimitingForPainting(alert.painting_id);
+      console.log(`Rate limiting cleared for painting ${alert.painting_id} after alert dismissal`);
+    } catch (importError) {
+      console.error('Error importing email service:', importError);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in handleAlertDismissal:', error);
     return false;
   }
 } 

@@ -9,6 +9,27 @@ export async function GET(request: Request) {
     const paintingId = searchParams.get('paintingId');
     const deviceId = searchParams.get('deviceId');
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 20;
+    const countOnly = searchParams.get('countOnly') === 'true';
+    
+    // If we only need the count, use a more efficient query
+    if (countOnly) {
+      const { count, error } = await supabase
+        .from('environmental_data')
+        .select('id', { count: 'exact', head: true });
+      
+      if (error) {
+        console.error('Error counting environmental data:', error);
+        return NextResponse.json(
+          { error: error.message },
+          { status: 500 }
+        );
+      }
+      
+      return NextResponse.json({
+        success: true,
+        count: count || 0
+      });
+    }
     
     // Start building the query
     let query = supabase
@@ -36,10 +57,19 @@ export async function GET(request: Request) {
       );
     }
     
+    // Get the total count of records
+    const { count, error: countError } = await supabase
+      .from('environmental_data')
+      .select('id', { count: 'exact', head: true });
+    
+    if (countError) {
+      console.error('Error counting environmental data:', countError);
+    }
+    
     // Return the data directly without transformations
     return NextResponse.json({
       success: true,
-      count: data.length,
+      count: count || 0,
       data: data
     });
   } catch (error) {
