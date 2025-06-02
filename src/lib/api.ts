@@ -5,6 +5,67 @@ import { PROPERTY_MAPPINGS } from './propertyMapper';
 import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 
+// Type definitions
+type AlertData = {
+  id: string;
+  painting_id: string;
+  device_id: string;
+  alert_type: string;
+  measured_value: number;
+  threshold_value: number;
+  threshold_exceeded: 'upper' | 'lower';
+  timestamp: string;
+  status: string;
+  paintings?: {
+    id: string;
+    name: string;
+    artist: string;
+    painting_materials?: Array<{
+      materials: {
+        threshold_temperature_lower: number | null;
+        threshold_temperature_upper: number | null;
+        threshold_humidity_lower: number | null;
+        threshold_humidity_upper: number | null;
+        threshold_co2concentration_lower: number | null;
+        threshold_co2concentration_upper: number | null;
+        threshold_moldrisklevel_lower: number | null;
+        threshold_moldrisklevel_upper: number | null;
+        threshold_airpressure_lower: number | null;
+        threshold_airpressure_upper: number | null;
+        threshold_illuminance_lower: number | null;
+        threshold_illuminance_upper: number | null;
+      };
+    }>;
+  };
+  devices?: {
+    name: string;
+    status: string;
+  };
+};
+
+type GetAlertsResult = {
+  success: boolean;
+  error: string | null;
+  alerts: AlertData[];
+};
+
+type CheckAlertsResult = {
+  success: boolean;
+  error?: string;
+  alertsCount?: number;
+  emailsSent?: number;
+  message?: string;
+  paintingsWithAlerts?: Array<{
+    painting: {
+      id: string;
+      name: string;
+      artist: string;
+      [key: string]: any;
+    };
+    alerts: AlertData[];
+  }>;
+};
+
 // Paintings API
 export async function getPaintings() {
   const { data, error } = await supabase
@@ -189,7 +250,7 @@ export async function storeSensorData(sensorData: Partial<EnvironmentalData>) {
 }
 
 // Check for alerts based on environmental data and material thresholds
-export async function getAlerts() {
+export async function getAlerts(): Promise<GetAlertsResult> {
   const { data: envData, error: envError } = await supabase
     .from('environmental_data')
     .select(`
@@ -208,11 +269,11 @@ export async function getAlerts() {
   
   if (envError) {
     console.error('Error fetching data for alerts:', envError);
-    return [];
+    return { success: false, error: envError.message, alerts: [] };
   }
   
   // Process data to find measurements that exceed thresholds
-  const alerts = envData.filter(data => {
+  const alerts = envData?.filter(data => {
     const painting = data.paintings;
     if (!painting || !painting.painting_materials || painting.painting_materials.length === 0) {
       return false;
@@ -248,190 +309,161 @@ export async function getAlerts() {
     }
     
     return false;
-  });
+  }) || [];
   
-  return alerts;
+  return { success: true, alerts, error: null };
 }
 
 // Check for alerts and send email notifications if thresholds are exceeded
 export async function checkAlertsAndNotify() {
-  try {
-    console.log('🔍 EMAIL CHECK: Starting to check for alerts that need email notifications...');
-    
-    const alerts = await getAlerts();
-    if (!alerts || alerts.length === 0) {
-      console.log('🔍 EMAIL CHECK: No alerts detected at this time.');
-      return { success: true, alertsCount: 0 };
-    }
-    
-    console.log(`🔍 EMAIL CHECK: Found ${alerts.length} alerts that may require notification.`);
-    
-    // Lazy import to avoid circular dependencies
-    console.log('🔍 EMAIL CHECK: Importing email service...');
-    const { sendAlertEmail } = await import('./email');
-    console.log('🔍 EMAIL CHECK: Email service imported successfully');
-    
-    let emailsSent = 0;
-    let attemptedEmails = 0;
-    
-    // Log email configuration
-    const { emailConfig, isEmailConfigured } = await import('./emailConfig');
-    const emailConfigured = isEmailConfigured();
-    console.log('🔍 EMAIL CHECK: Email configuration status:', { 
-      isConfigured: emailConfigured,
-      host: emailConfig.smtp.host,
-      port: emailConfig.smtp.port,
-      hasUser: !!emailConfig.smtp.auth.user,
-      hasPassword: !!emailConfig.smtp.auth.pass,
-      from: emailConfig.from,
-      recipients: emailConfig.alertRecipients 
-    });
-    
-    if (!emailConfigured) {
-      console.error('❌ EMAIL CHECK: Email is not configured properly. Cannot send notifications.');
-      return { success: false, alertsCount: alerts.length, emailsSent: 0, error: 'Email is not configured properly' };
-    }
-    
-    // Group alerts by painting to avoid sending too many emails
-    console.log('🔍 EMAIL CHECK: Grouping alerts by painting...');
-    
-    // Define interface for painting alerts
-    interface PaintingAlertGroup {
-      painting: {
-        id: string;
-        name: string;
-        artist: string;
-        [key: string]: any;
-      };
-      alerts: Array<{
-        id: string;
-        painting_id: string;
-        alert_type: string;
-        measured_value: number;
-        threshold_value: number;
-        threshold_exceeded: 'upper' | 'lower';
-        timestamp: string;
-        status: string;
-        [key: string]: any;
-      }>;
-    }
-    
-    // Create the mapping with proper type
-    const alertsByPainting: Record<string, PaintingAlertGroup> = {};
-    
-    for (const alert of alerts) {
-      // Skip dismissed alerts
-      if (alert.status === 'dismissed') {
-        console.log(`🔍 EMAIL CHECK: Skipping dismissed alert ${alert.id}`);
-        continue;
-      }
-      
-      // Only include alerts for paintings with materials
-      if (!alert.paintings || !alert.paintings.painting_materials) {
-        console.log(`🔍 EMAIL CHECK: Skipping alert ${alert.id} - no painting materials defined`);
-        continue;
-      }
-      
-      const paintingId = alert.painting_id;
-      const painting = alert.paintings;
-      
-      if (!alertsByPainting[paintingId]) {
-        alertsByPainting[paintingId] = {
-          painting,
-          alerts: []
-        };
-      }
-      
-      alertsByPainting[paintingId].alerts.push(alert);
-    }
-    
-    // Convert to array and sort by alert count (most alerts first)
-    const paintingsWithAlerts = Object.values(alertsByPainting)
-      .filter((entry: PaintingAlertGroup) => entry.alerts.length > 0)
-      .sort((a: PaintingAlertGroup, b: PaintingAlertGroup) => b.alerts.length - a.alerts.length);
-    
-    console.log(`🔍 EMAIL CHECK: Found ${paintingsWithAlerts.length} paintings with active alerts`);
-    
-    // Now process each painting's alerts
-    for (const entry of paintingsWithAlerts) {
-      const painting = entry.painting;
-      const paintingAlerts = entry.alerts;
-      
-      for (const alert of paintingAlerts) {
-        attemptedEmails++;
-        
-        try {
-          console.log(`🔍 EMAIL CHECK: Sending alert for ${painting.name} - ${alert.alert_type} (${alert.measured_value})`);
-          
-          // Map alert type to proper measurement type
-          let measurementType: any = alert.alert_type;
-          if (alert.alert_type === 'co2') measurementType = 'co2';
-          if (alert.alert_type === 'temperature') measurementType = 'temperature';
-          if (alert.alert_type === 'humidity') measurementType = 'humidity';
-          if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
-          if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
-          
-          // Determine unit based on measurement type
-          let unit = '';
-          switch (measurementType) {
-            case 'temperature': unit = '°C'; break;
-            case 'humidity': unit = '%'; break;
-            case 'co2': unit = 'ppm'; break;
-            case 'illuminance': unit = 'lux'; break;
-            case 'mold_risk_level': unit = 'level'; break;
-            default: unit = ''; break;
-          }
-          
-          // Create thresholds object
-          const thresholds = {
-            lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
-            upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
-          };
-          
-          // Send email using the comprehensive email service
-          const emailSent = await sendAlertEmail({
-            id: alert.id,
-            paintingId: alert.painting_id,
-            paintingName: painting.name,
-            artist: painting.artist,
-            measurement: {
-              type: measurementType,
-              value: alert.measured_value,
-              unit: unit
-            },
-            threshold: thresholds,
-            timestamp: alert.timestamp
-          });
-          
-          if (emailSent) {
-            emailsSent++;
-            console.log(`✅ EMAIL CHECK: Successfully sent alert email for ${painting.name} (${alert.alert_type})`);
-          } else {
-            console.warn(`⚠️ EMAIL CHECK: Failed to send alert email for ${painting.name} (${alert.alert_type})`);
-          }
-        } catch (emailError) {
-          console.error(`❌ EMAIL CHECK: Error sending alert email for ${painting.name}:`, emailError);
-        }
-      }
-    }
-    
-    console.log(`🔍 EMAIL CHECK: Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}`);
-    
-    return { 
-      success: true, 
-      alertsCount: alerts.length, 
-      emailsSent,
-      paintingsWithAlerts: paintingsWithAlerts.length
-    };
-  } catch (error) {
-    console.error('❌ EMAIL CHECK: Error in checkAlertsAndNotify:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error checking alerts', 
-      alertsCount: 0, 
-      emailsSent: 0 
-    };
+  console.log('🔍 EMAIL CHECK: Starting to check for alerts that need email notifications...');
+  
+  const result = await getAlerts();
+  if (!result.success || !result.alerts || result.alerts.length === 0) {
+    console.log('🔍 EMAIL CHECK: No alerts detected at this time.');
+    return { success: true, alertsCount: 0 };
   }
+  
+  console.log(`🔍 EMAIL CHECK: Found ${result.alerts.length} alerts that may require notification.`);
+  
+  // Lazy import to avoid circular dependencies
+  console.log('🔍 EMAIL CHECK: Importing email service...');
+  const { sendAlertEmail } = await import('./email');
+  console.log('🔍 EMAIL CHECK: Email service imported successfully');
+  
+  let emailsSent = 0;
+  let attemptedEmails = 0;
+  
+  // Log email configuration
+  const { emailConfig, isEmailConfigured } = await import('./emailConfig');
+  const emailConfigured = isEmailConfigured();
+  
+  if (!emailConfigured) {
+    console.error('❌ EMAIL CHECK: Email is not configured properly. Cannot send notifications.');
+    return { success: false, alertsCount: result.alerts.length, emailsSent: 0, error: 'Email is not configured properly' };
+  }
+  
+  // Group alerts by painting to avoid sending too many emails
+  console.log('🔍 EMAIL CHECK: Grouping alerts by painting...');
+  
+  // Define interface for painting alerts
+  interface PaintingAlertGroup {
+    painting: {
+      id: string;
+      name: string;
+      artist: string;
+      [key: string]: any;
+    };
+    alerts: AlertData[];
+  }
+  
+  // Create the mapping with proper type
+  const alertsByPainting: Record<string, PaintingAlertGroup> = {};
+  
+  for (const alert of result.alerts) {
+    // Skip dismissed alerts
+    if (alert.status === 'dismissed') {
+      console.log(`🔍 EMAIL CHECK: Skipping dismissed alert ${alert.id}`);
+      continue;
+    }
+    
+    // Only include alerts for paintings with materials
+    if (!alert.paintings || !alert.paintings.painting_materials) {
+      console.log(`🔍 EMAIL CHECK: Skipping alert ${alert.id} - no painting materials defined`);
+      continue;
+    }
+    
+    const paintingId = alert.painting_id;
+    const painting = alert.paintings;
+    
+    if (!alertsByPainting[paintingId]) {
+      alertsByPainting[paintingId] = {
+        painting,
+        alerts: []
+      };
+    }
+    
+    alertsByPainting[paintingId].alerts.push(alert);
+  }
+  
+  // Convert to array and sort by alert count (most alerts first)
+  const paintingsWithAlerts = Object.values(alertsByPainting)
+    .filter((entry: PaintingAlertGroup) => entry.alerts.length > 0)
+    .sort((a: PaintingAlertGroup, b: PaintingAlertGroup) => b.alerts.length - a.alerts.length);
+  
+  console.log(`🔍 EMAIL CHECK: Found ${paintingsWithAlerts.length} paintings with active alerts`);
+  
+  // Now process each painting's alerts
+  for (const entry of paintingsWithAlerts) {
+    const painting = entry.painting;
+    const paintingAlerts = entry.alerts;
+    
+    for (const alert of paintingAlerts) {
+      attemptedEmails++;
+      
+      try {
+        console.log(`🔍 EMAIL CHECK: Sending alert for ${painting.name} - ${alert.alert_type} (${alert.measured_value})`);
+        
+        // Map alert type to proper measurement type
+        let measurementType: any = alert.alert_type;
+        if (alert.alert_type === 'co2') measurementType = 'co2';
+        if (alert.alert_type === 'temperature') measurementType = 'temperature';
+        if (alert.alert_type === 'humidity') measurementType = 'humidity';
+        if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
+        if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
+        
+        // Determine unit based on measurement type
+        let unit = '';
+        switch (measurementType) {
+          case 'temperature': unit = '°C'; break;
+          case 'humidity': unit = '%'; break;
+          case 'co2': unit = 'ppm'; break;
+          case 'illuminance': unit = 'lux'; break;
+          case 'mold_risk_level': unit = 'level'; break;
+          default: unit = ''; break;
+        }
+        
+        // Create thresholds object
+        const thresholds = {
+          lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
+          upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
+        };
+        
+        // Send email using the comprehensive email service
+        const emailSent = await sendAlertEmail({
+          id: alert.id,
+          paintingId: alert.painting_id,
+          paintingName: painting.name,
+          artist: painting.artist,
+          measurement: {
+            type: measurementType,
+            value: alert.measured_value,
+            unit: unit
+          },
+          threshold: thresholds,
+          timestamp: alert.timestamp
+        });
+        
+        if (emailSent) {
+          emailsSent++;
+          console.log(`✅ EMAIL CHECK: Successfully sent alert email for ${painting.name} (${alert.alert_type})`);
+        } else {
+          console.warn(`⚠️ EMAIL CHECK: Failed to send alert email for ${painting.name} (${alert.alert_type})`);
+        }
+      } catch (emailError) {
+        console.error(`❌ EMAIL CHECK: Error sending alert email for ${painting.name}:`, emailError);
+      }
+    }
+  }
+  
+  console.log(`🔍 EMAIL CHECK: Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}`);
+  
+  return {
+    success: true,
+    alertsCount: result.alerts.length,
+    emailsSent,
+    paintingsWithAlerts
+  };
 }
 
 async function checkAlertsAndSendNotifications(): Promise<CheckAlertsResult> {
@@ -439,183 +471,48 @@ async function checkAlertsAndSendNotifications(): Promise<CheckAlertsResult> {
   
   try {
     // Get alerts
-    const { success, alerts, error } = await getAlerts();
+    const result = await getAlerts();
     
-    if (!success || !alerts) {
-      console.error('🔍 API: Failed to get alerts:', error);
-      return { success: false, error: error || 'Failed to get alerts' };
+    if (!result.success || !result.alerts) {
+      console.error('🔍 API: Failed to get alerts:', result.error);
+      return { success: false, error: result.error || 'Failed to get alerts' };
     }
     
-    if (alerts.length === 0) {
+    if (result.alerts.length === 0) {
       console.log('🔍 API: No alerts found, skipping notifications');
       return { success: true, alertsCount: 0, emailsSent: 0, message: 'No alerts found' };
     }
     
-    // Import email service dynamically to avoid server/client issues
-    console.log('🔍 EMAIL CHECK: Importing email service...');
-    const { sendAlertEmail } = await import('./email');
-    
-    // Import email config
-    const { emailConfig, isEmailConfigured } = await import('./emailConfig');
-    
-    let emailsSent = 0;
-    let attemptedEmails = 0;
-    
-    // Log email configuration
-    const emailConfigured = isEmailConfigured();
-    console.log('🔍 EMAIL CHECK: Email configuration status:', { 
-      isConfigured: emailConfigured,
-      host: emailConfig.smtp.host,
-      port: emailConfig.smtp.port,
-      hasUser: !!emailConfig.smtp.auth.user,
-      hasPassword: !!emailConfig.smtp.auth.pass,
-      from: emailConfig.from,
-      recipients: emailConfig.alertRecipients 
-    });
-    
-    if (!emailConfigured) {
-      console.error('❌ EMAIL CHECK: Email is not configured properly. Cannot send notifications.');
-      return { success: false, alertsCount: alerts.length, emailsSent: 0, error: 'Email is not configured properly' };
-    }
-    
-    // Group alerts by painting to avoid sending too many emails
-    console.log('🔍 EMAIL CHECK: Grouping alerts by painting...');
-    
-    // Define interface for painting alerts
-    interface PaintingAlertGroup {
-      painting: {
-        id: string;
-        name: string;
-        artist: string;
-        [key: string]: any;
-      };
-      alerts: Array<{
-        id: string;
-        painting_id: string;
-        alert_type: string;
-        measured_value: number;
-        threshold_value: number;
-        threshold_exceeded: 'upper' | 'lower';
-        timestamp: string;
-        status: string;
-        [key: string]: any;
-      }>;
-    }
-    
-    // Create the mapping with proper type
-    const alertsByPainting: Record<string, PaintingAlertGroup> = {};
-    
-    for (const alert of alerts) {
-      // Skip dismissed alerts
-      if (alert.status === 'dismissed') {
-        console.log(`🔍 EMAIL CHECK: Skipping dismissed alert ${alert.id}`);
-        continue;
-      }
-      
-      // Only include alerts for paintings with materials
-      if (!alert.paintings || !alert.paintings.painting_materials) {
-        console.log(`🔍 EMAIL CHECK: Skipping alert ${alert.id} - no painting materials defined`);
-        continue;
-      }
-      
-      const paintingId = alert.painting_id;
+    // Process alerts and group by painting
+    const paintingsWithAlerts = result.alerts.reduce((acc: any[], alert) => {
       const painting = alert.paintings;
+      if (!painting) return acc;
       
-      if (!alertsByPainting[paintingId]) {
-        alertsByPainting[paintingId] = {
+      const existingGroup = acc.find(group => group.painting.id === painting.id);
+      if (existingGroup) {
+        existingGroup.alerts.push(alert);
+      } else {
+        acc.push({
           painting,
-          alerts: []
-        };
+          alerts: [alert]
+        });
       }
-      
-      alertsByPainting[paintingId].alerts.push(alert);
-    }
+      return acc;
+    }, []);
     
-    // Convert to array and sort by alert count (most alerts first)
-    const paintingsWithAlerts = Object.values(alertsByPainting)
-      .filter((entry: PaintingAlertGroup) => entry.alerts.length > 0)
-      .sort((a: PaintingAlertGroup, b: PaintingAlertGroup) => b.alerts.length - a.alerts.length);
-    
-    console.log(`🔍 EMAIL CHECK: Found ${paintingsWithAlerts.length} paintings with active alerts`);
-    
-    // Now process each painting's alerts
-    for (const entry of paintingsWithAlerts) {
-      const painting = entry.painting;
-      const paintingAlerts = entry.alerts;
-      
-      for (const alert of paintingAlerts) {
-        attemptedEmails++;
-        
-        try {
-          console.log(`🔍 EMAIL CHECK: Sending alert for ${painting.name} - ${alert.alert_type} (${alert.measured_value})`);
-          
-          // Map alert type to proper measurement type
-          let measurementType: any = alert.alert_type;
-          if (alert.alert_type === 'co2') measurementType = 'co2';
-          if (alert.alert_type === 'temperature') measurementType = 'temperature';
-          if (alert.alert_type === 'humidity') measurementType = 'humidity';
-          if (alert.alert_type === 'mold_risk_level') measurementType = 'mold_risk_level';
-          if (alert.alert_type === 'illuminance') measurementType = 'illuminance';
-          
-          // Determine unit based on measurement type
-          let unit = '';
-          switch (measurementType) {
-            case 'temperature': unit = '°C'; break;
-            case 'humidity': unit = '%'; break;
-            case 'co2': unit = 'ppm'; break;
-            case 'illuminance': unit = 'lux'; break;
-            case 'mold_risk_level': unit = 'level'; break;
-            default: unit = ''; break;
-          }
-          
-          // Create thresholds object
-          const thresholds = {
-            lower: alert.threshold_exceeded === 'lower' ? alert.threshold_value : null,
-            upper: alert.threshold_exceeded === 'upper' ? alert.threshold_value : null,
-          };
-          
-          // Send email using the comprehensive email service
-          const emailSent = await sendAlertEmail({
-            id: alert.id,
-            paintingId: alert.painting_id,
-            paintingName: painting.name,
-            artist: painting.artist,
-            measurement: {
-              type: measurementType,
-              value: alert.measured_value,
-              unit: unit
-            },
-            threshold: thresholds,
-            timestamp: alert.timestamp
-          });
-          
-          if (emailSent) {
-            emailsSent++;
-            console.log(`✅ EMAIL CHECK: Successfully sent alert email for ${painting.name} (${alert.alert_type})`);
-          } else {
-            console.warn(`⚠️ EMAIL CHECK: Failed to send alert email for ${painting.name} (${alert.alert_type})`);
-          }
-        } catch (emailError) {
-          console.error(`❌ EMAIL CHECK: Error sending alert email for ${painting.name}:`, emailError);
-        }
-      }
-    }
-    
-    console.log(`🔍 EMAIL CHECK: Attempted ${attemptedEmails} emails, successfully sent ${emailsSent}`);
-    
-    return { 
-      success: true, 
-      alertsCount: alerts.length, 
-      emailsSent,
-      paintingsWithAlerts: paintingsWithAlerts.length
+    return {
+      success: true,
+      alertsCount: result.alerts.length,
+      emailsSent: 0,
+      paintingsWithAlerts
     };
   } catch (error) {
-    console.error('❌ EMAIL CHECK: Error in checkAlertsAndNotify:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error checking alerts', 
-      alertsCount: 0, 
-      emailsSent: 0 
+    console.error('🔍 API: Error in checkAlertsAndSendNotifications:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error checking alerts',
+      alertsCount: 0,
+      emailsSent: 0
     };
   }
 } 
