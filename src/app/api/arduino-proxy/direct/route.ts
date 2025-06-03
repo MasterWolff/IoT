@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
+  const ARDUINO_CLIENT_ID = process.env.ARDUINO_CLIENT_ID;
+  const ARDUINO_CLIENT_SECRET = process.env.ARDUINO_CLIENT_SECRET;
+
+  if (!ARDUINO_CLIENT_ID || !ARDUINO_CLIENT_SECRET) {
+    console.error("Arduino API credentials are not configured in environment variables for direct route.");
+    return NextResponse.json(
+      { error: "Server configuration error: Missing API credentials for direct route." },
+      { status: 500 }
+    );
+  }
+
   try {
     // Parameters for the token request
     const params = {
       grant_type: "client_credentials",
-      client_id: "9Jw0vR0nlmbiglWl1Xd1WAWKH348vpV4",
-      client_secret: "JQD5lFjHRRrBkjRP6JN7pxzVYIAqbCLCtwgWoDs78FFzrs2dHEP5CZmhUWTsECNf",
+      client_id: ARDUINO_CLIENT_ID,
+      client_secret: ARDUINO_CLIENT_SECRET,
       audience: "https://api2.arduino.cc/iot"
     };
     
